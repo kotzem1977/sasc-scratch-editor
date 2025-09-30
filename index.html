@@ -9,112 +9,97 @@
 
     <!-- Main editor bundle -->
     <script defer src="gui.js"></script>
-<script>
-/* SASC: Force Scratch VM to use official asset & project hosts; log any failed fetches */
-(function(){
-  function setStorageHosts(){
-    try{
-      const vm = window.vm;
-      const st = vm && vm.runtime && vm.runtime.storage;
-      if (st) {
-        // Set both variants some builds use
-        if (typeof st.setAssetHost   === 'function') st.setAssetHost('https://assets.scratch.mit.edu');
-        if (typeof st.setProjectHost === 'function') st.setProjectHost('https://projects.scratch.mit.edu');
-        // Fallback assignments if those methods don't exist on this build
-        st.assetHost   = 'https://assets.scratch.mit.edu';
-        st.projectHost = 'https://projects.scratch.mit.edu';
+
+    <!-- Force official asset/project hosts + log failed fetches -->
+    <script>
+    (function(){
+      function setStorageHosts(){
+        try{
+          const vm = window.vm;
+          const st = vm && vm.runtime && vm.runtime.storage;
+          if (st) {
+            if (typeof st.setAssetHost   === 'function') st.setAssetHost('https://assets.scratch.mit.edu');
+            if (typeof st.setProjectHost === 'function') st.setProjectHost('https://projects.scratch.mit.edu');
+            st.assetHost   = 'https://assets.scratch.mit.edu';
+            st.projectHost = 'https://projects.scratch.mit.edu';
+          }
+        } catch(e) { console.warn('SASC storage host patch skipped:', e); }
       }
-    } catch(e) { console.warn('SASC storage host patch skipped:', e); }
-  }
 
-  // Log failed fetches so we can see exact status/URL if anything breaks
-  (function hookFetch(){
-    const orig = window.fetch;
-    if (!orig) return;
-    window.fetch = function(url, opts){
-      return orig.call(this, url, opts).then(res => {
-        if (!res.ok) console.warn('Asset fetch failed:', res.status, res.url);
-        return res;
-      }).catch(err => {
-        console.error('Asset fetch error:', url, err);
-        throw err;
+      // Log failed fetches so we can see exact status/URL if anything breaks
+      (function hookFetch(){
+        const orig = window.fetch;
+        if (!orig) return;
+        window.fetch = function(url, opts){
+          return orig.call(this, url, opts).then(res => {
+            if (!res.ok) console.warn('Asset fetch failed:', res.status, res.url);
+            return res;
+          }).catch(err => {
+            console.error('Asset fetch error:', url, err);
+            throw err;
+          });
+        };
+      })();
+
+      // Try immediately and again after VM has initialized
+      window.addEventListener('load', () => {
+        setStorageHosts();
+        setTimeout(setStorageHosts, 800);
       });
-    };
-  })();
-
-  // Try immediately and again after VM has initialized
-  window.addEventListener('load', () => {
-    setStorageHosts();
-    setTimeout(setStorageHosts, 800);
-  });
-})();
-
+    })();
+    </script>
 
     <!-- Autosave/restore bridge (localStorage) -->
-      (function () {
-        const KEY = "sasc_autosave";
-        const SAVE_MS = 10000;
+    <script>
+    (function () {
+      const KEY = "sasc_autosave";
+      const SAVE_MS = 10000;
 
-        function getVM() {
-          // VM is exposed by the build as window.vm in most prebuilt bundles
-          try {
-            return window.vm && typeof window.vm.toJSON === "function"
-              ? window.vm
-              : null;
-          } catch (_) {
-            return null;
-          }
-        }
+      function getVM() {
+        try {
+          return window.vm && typeof window.vm.toJSON === "function" ? window.vm : null;
+        } catch (_) { return null; }
+      }
 
-        function tryRestore() {
-          try {
-            const vm = getVM();
-            if (!vm) return false;
-            const saved = localStorage.getItem(KEY);
-            if (saved) {
-              // loadProject accepts a JSON string in these builds
-              vm.loadProject(saved);
-            }
-            return true;
-          } catch (_) {
-            return false;
-          }
-        }
+      function tryRestore() {
+        try {
+          const vm = getVM();
+          if (!vm) return false;
+          const saved = localStorage.getItem(KEY);
+          if (saved) vm.loadProject(saved);
+          return true;
+        } catch (_) { return false; }
+      }
 
-        function startAutoSave() {
-          try {
-            const vm = getVM();
-            if (!vm) return false;
-            if (window.__sascSaver) return true; // guard against duplicates
-            window.__sascSaver = setInterval(() => {
-              try {
-                const v = getVM();
-                if (!v) return;
-                const json = v.toJSON();
-                localStorage.setItem(KEY, json);
-              } catch (_) {}
-            }, SAVE_MS);
-            return true;
-          } catch (_) {
-            return false;
-          }
-        }
+      function startAutoSave() {
+        try {
+          const vm = getVM();
+          if (!vm) return false;
+          if (window.__sascSaver) return true; // guard against duplicates
+          window.__sascSaver = setInterval(() => {
+            try {
+              const v = getVM(); if (!v) return;
+              const json = v.toJSON();
+              localStorage.setItem(KEY, json);
+            } catch (_) {}
+          }, SAVE_MS);
+          return true;
+        } catch (_) { return false; }
+      }
 
-        // Wait until the page (and gui.js) are loaded, then poll for VM
-        function tick() {
-          if (tryRestore() & startAutoSave()) return;
-          setTimeout(tick, 500);
-        }
-        window.addEventListener("load", tick);
-      })();
+      // Wait until the page (and gui.js) are loaded, then poll for VM
+      function tick() {
+        if (tryRestore() & startAutoSave()) return;
+        setTimeout(tick, 500);
+      }
+      window.addEventListener("load", tick);
+    })();
     </script>
 
     <style>
-      /* Not required, just keeps body from showing scrollbars while the app renders */
       html, body { height: 100%; margin: 0; }
       body { overflow: hidden; background: #0f0f0f; }
     </style>
   </head>
   <body></body>
 </html>
-
