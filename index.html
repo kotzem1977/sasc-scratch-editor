@@ -10,20 +10,48 @@
     <!-- Main editor bundle -->
     <script defer src="gui.js"></script>
 
-    <!-- Force official asset/project hosts + log failed fetches -->
+    <!-- SASC: Auto-detect and set Scratch asset/project hosts; log fetch issues -->
     <script>
     (function(){
-      function setStorageHosts(){
+      const HOSTS = [
+        'https://assets.scratch.mit.edu',
+        'https://cdn.assets.scratch.mit.edu'
+      ];
+      const PROJ_HOST = 'https://projects.scratch.mit.edu';
+      const PROBE_MD5 = '3826a4091a33e4d26f87a2fac7cf796b.svg'; // Apple
+
+      async function first200(urls){
+        for (const u of urls){
+          try {
+            const r = await fetch(u, {mode:'cors', cache:'no-cache'});
+            if (r.ok) return u;
+          } catch(_) {}
+        }
+        return null;
+      }
+
+      async function pickAssetHost(){
+        const urls = HOSTS.map(h => `${h}/internalapi/asset/${PROBE_MD5}/get/`);
+        const good = await first200(urls);
+        if (!good) return null;
+        return good.split('/internalapi/asset/')[0]; // strip suffix
+      }
+
+      function setHosts(assetHost){
         try{
           const vm = window.vm;
           const st = vm && vm.runtime && vm.runtime.storage;
-          if (st) {
-            if (typeof st.setAssetHost   === 'function') st.setAssetHost('https://assets.scratch.mit.edu');
-            if (typeof st.setProjectHost === 'function') st.setProjectHost('https://projects.scratch.mit.edu');
-            st.assetHost   = 'https://assets.scratch.mit.edu';
-            st.projectHost = 'https://projects.scratch.mit.edu';
-          }
-        } catch(e) { console.warn('SASC storage host patch skipped:', e); }
+          if (!st) return false;
+          if (typeof st.setAssetHost   === 'function') st.setAssetHost(assetHost);
+          if (typeof st.setProjectHost === 'function') st.setProjectHost(PROJ_HOST);
+          st.assetHost   = assetHost;
+          st.projectHost = PROJ_HOST;
+          console.log('[SASC] assetHost =', st.assetHost, 'projectHost =', st.projectHost);
+          return true;
+        }catch(e){
+          console.warn('[SASC] setHosts error', e);
+          return false;
+        }
       }
 
       // Log failed fetches so we can see exact status/URL if anything breaks
@@ -41,15 +69,22 @@
         };
       })();
 
-      // Try immediately and again after VM has initialized
-      window.addEventListener('load', () => {
-        setStorageHosts();
-        setTimeout(setStorageHosts, 800);
-      });
+      async function init(){
+        const assetHost = await pickAssetHost();
+        if (!assetHost){
+          console.error('[SASC] No working asset host detected');
+          return;
+        }
+        // Set hosts now and again shortly (after VM is surely up)
+        setHosts(assetHost);
+        setTimeout(()=>setHosts(assetHost), 800);
+      }
+
+      window.addEventListener('load', init);
     })();
     </script>
 
-    <!-- Autosave/restore bridge (localStorage) -->
+    <!-- SASC: Autosave/restore bridge (localStorage) -->
     <script>
     (function () {
       const KEY = "sasc_autosave";
