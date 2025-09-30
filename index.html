@@ -9,9 +9,48 @@
 
     <!-- Main editor bundle -->
     <script defer src="gui.js"></script>
+<script>
+/* SASC: Force Scratch VM to use official asset & project hosts; log any failed fetches */
+(function(){
+  function setStorageHosts(){
+    try{
+      const vm = window.vm;
+      const st = vm && vm.runtime && vm.runtime.storage;
+      if (st) {
+        // Set both variants some builds use
+        if (typeof st.setAssetHost   === 'function') st.setAssetHost('https://assets.scratch.mit.edu');
+        if (typeof st.setProjectHost === 'function') st.setProjectHost('https://projects.scratch.mit.edu');
+        // Fallback assignments if those methods don't exist on this build
+        st.assetHost   = 'https://assets.scratch.mit.edu';
+        st.projectHost = 'https://projects.scratch.mit.edu';
+      }
+    } catch(e) { console.warn('SASC storage host patch skipped:', e); }
+  }
+
+  // Log failed fetches so we can see exact status/URL if anything breaks
+  (function hookFetch(){
+    const orig = window.fetch;
+    if (!orig) return;
+    window.fetch = function(url, opts){
+      return orig.call(this, url, opts).then(res => {
+        if (!res.ok) console.warn('Asset fetch failed:', res.status, res.url);
+        return res;
+      }).catch(err => {
+        console.error('Asset fetch error:', url, err);
+        throw err;
+      });
+    };
+  })();
+
+  // Try immediately and again after VM has initialized
+  window.addEventListener('load', () => {
+    setStorageHosts();
+    setTimeout(setStorageHosts, 800);
+  });
+})();
+
 
     <!-- Autosave/restore bridge (localStorage) -->
-    <script>
       (function () {
         const KEY = "sasc_autosave";
         const SAVE_MS = 10000;
