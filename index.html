@@ -10,77 +10,62 @@
     <!-- Main editor bundle -->
     <script defer src="gui.js"></script>
 
-    <!-- SASC: Auto-detect and set Scratch asset/project hosts; log fetch issues -->
+    <!-- SASC: Auto-detect + RETRY setting Scratch asset/project hosts; detailed logs -->
     <script>
     (function(){
-      const HOSTS = [
-        'https://assets.scratch.mit.edu',
-        'https://cdn.assets.scratch.mit.edu'
-      ];
+      const HOSTS = ['https://assets.scratch.mit.edu','https://cdn.assets.scratch.mit.edu'];
       const PROJ_HOST = 'https://projects.scratch.mit.edu';
       const PROBE_MD5 = '3826a4091a33e4d26f87a2fac7cf796b.svg'; // Apple
 
-      async function first200(urls){
-        for (const u of urls){
-          try {
-            const r = await fetch(u, {mode:'cors', cache:'no-cache'});
-            if (r.ok) return u;
-          } catch(_) {}
+      async function probe(url){
+        try {
+          const r = await fetch(url, {mode:'cors', cache:'no-cache'});
+          console.log('[SASC] probe', r.status, url);
+          return r.ok;
+        } catch (e) {
+          console.warn('[SASC] probe error', url, e);
+          return false;
+        }
+      }
+      async function pickAssetHost(){
+        for (const h of HOSTS){
+          const ok = await probe(`${h}/internalapi/asset/${PROBE_MD5}/get/`);
+          if (ok) return h;
         }
         return null;
       }
-
-      async function pickAssetHost(){
-        const urls = HOSTS.map(h => `${h}/internalapi/asset/${PROBE_MD5}/get/`);
-        const good = await first200(urls);
-        if (!good) return null;
-        return good.split('/internalapi/asset/')[0]; // strip suffix
-      }
-
-      function setHosts(assetHost){
+      function trySetHosts(assetHost){
         try{
-          const vm = window.vm;
-          const st = vm && vm.runtime && vm.runtime.storage;
+          const st = window.vm?.runtime?.storage;
           if (!st) return false;
-          if (typeof st.setAssetHost   === 'function') st.setAssetHost(assetHost);
-          if (typeof st.setProjectHost === 'function') st.setProjectHost(PROJ_HOST);
+          st.setAssetHost?.(assetHost);
+          st.setProjectHost?.(PROJ_HOST);
           st.assetHost   = assetHost;
           st.projectHost = PROJ_HOST;
-          console.log('[SASC] assetHost =', st.assetHost, 'projectHost =', st.projectHost);
+          console.log('[SASC] SET hosts → assetHost =', st.assetHost, 'projectHost =', st.projectHost);
           return true;
         }catch(e){
           console.warn('[SASC] setHosts error', e);
           return false;
         }
       }
-
-      // Log failed fetches so we can see exact status/URL if anything breaks
-      (function hookFetch(){
-        const orig = window.fetch;
-        if (!orig) return;
-        window.fetch = function(url, opts){
-          return orig.call(this, url, opts).then(res => {
-            if (!res.ok) console.warn('Asset fetch failed:', res.status, res.url);
-            return res;
-          }).catch(err => {
-            console.error('Asset fetch error:', url, err);
-            throw err;
-          });
-        };
-      })();
-
-      async function init(){
+      async function boot(){
         const assetHost = await pickAssetHost();
         if (!assetHost){
           console.error('[SASC] No working asset host detected');
           return;
         }
-        // Set hosts now and again shortly (after VM is surely up)
-        setHosts(assetHost);
-        setTimeout(()=>setHosts(assetHost), 800);
+        let attempts = 0;
+        const timer = setInterval(() => {
+          attempts++;
+          const ok = trySetHosts(assetHost);
+          console.log('[SASC] attempt', attempts, 'storage ready =', ok);
+          if (ok || attempts >= 20) clearInterval(timer);
+        }, 250);
+        // one late pass just in case
+        setTimeout(() => trySetHosts(assetHost), 2000);
       }
-
-      window.addEventListener('load', init);
+      window.addEventListener('load', boot);
     })();
     </script>
 
@@ -89,28 +74,22 @@
     (function () {
       const KEY = "sasc_autosave";
       const SAVE_MS = 10000;
-
       function getVM() {
-        try {
-          return window.vm && typeof window.vm.toJSON === "function" ? window.vm : null;
-        } catch (_) { return null; }
+        try { return window.vm && typeof window.vm.toJSON === "function" ? window.vm : null; }
+        catch (_) { return null; }
       }
-
       function tryRestore() {
         try {
-          const vm = getVM();
-          if (!vm) return false;
+          const vm = getVM(); if (!vm) return false;
           const saved = localStorage.getItem(KEY);
           if (saved) vm.loadProject(saved);
           return true;
         } catch (_) { return false; }
       }
-
       function startAutoSave() {
         try {
-          const vm = getVM();
-          if (!vm) return false;
-          if (window.__sascSaver) return true; // guard against duplicates
+          const vm = getVM(); if (!vm) return false;
+          if (window.__sascSaver) return true;
           window.__sascSaver = setInterval(() => {
             try {
               const v = getVM(); if (!v) return;
@@ -121,8 +100,6 @@
           return true;
         } catch (_) { return false; }
       }
-
-      // Wait until the page (and gui.js) are loaded, then poll for VM
       function tick() {
         if (tryRestore() & startAutoSave()) return;
         setTimeout(tick, 500);
