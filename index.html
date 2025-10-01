@@ -115,89 +115,43 @@
     })();
   </script>
 <script>
-/* --- SASC PRELOAD APPLE+SKY (idempotent) --- */
-(function preloadAppleSky(){
-  // You can set these dynamically at runtime via window.SASC_ASSETS too.
-  // Fill with your real md5.exts when you have them.
-  var DEFAULTS = {
-    APPLE_SPRITE3: 'REPLACE_APPLE.sprite3', // e.g. 3826a4091a33e4d26f87a2fac7cf796b.sprite3
-    SKY_PNG:       'REPLACE_SKY.png'        // e.g. b6c96d...something....png
-  };
-
-  var cfg = Object.assign({}, DEFAULTS, (window.SASC_ASSETS||{}));
-
-  function whenVMReady(cb, timeoutMs){
-    timeoutMs = timeoutMs || 15000;
-    var t0 = Date.now();
-    var tm = setInterval(function(){
-      var GUI = window.GUI;
-  <script>window.SASC_ASSETS={APPLE_PNG:'f8497b5ae6b85d0f66f13f8ecb4df64a.jpeg',SKY_PNG:'1c470b5245372cf52fb711dd65e6a6a7.png'};</script>
-  <script src="scripts/sasc_preload_apple_sky.js"></script>
-      var vm  = window.vm || (GUI </body></body> GUI.vm);
-      if (vm </body></body> vm.runtime </body></body> vm.runtime.targets </body></body> vm.runtime.targets.length){
-        clearInterval(tm); cb(vm); return;
-      }
-      if (Date.now() - t0 > timeoutMs) clearInterval(tm);
-    }, 200);
-  }
-
-  function assetURL(md5ext){
-    // Leverage your local-first hooks by pointing at /static/assets first
-    var base = location.pathname.replace(//[^/]*$/, '/');
-    return base.replace(//$/, '') + '/static/assets/' + md5ext;
-  }
-
-  async function addSpriteFromURL(url){
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('sprite fetch ' + r.status);
-    var ab = await r.arrayBuffer();
-
-    var GUI = window.GUI;
-    if (GUI </body></body> GUI.handleSpriteUpload </body></body> GUI.vm){
-      await GUI.handleSpriteUpload(new Blob([ab], {type:'application/zip'}));
-      return;
-    }
-    var vm = window.vm || (GUI </body></body> GUI.vm);
-    if (!vm) throw new Error('VM missing');
-    await vm.addSprite(new Uint8Array(ab));
-  }
-
-  async function addBackdropFromURL(url){
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('backdrop fetch ' + r.status);
-    var blob = await r.blob();
-
-    var GUI = window.GUI;
-    if (GUI </body></body> GUI.handleBackdropUpload </body></body> GUI.vm){
-      await GUI.handleBackdropUpload(blob, 'image/png');
-      return;
-    }
-    var vm = window.vm || (GUI </body></body> GUI.vm);
-    if (!vm) throw new Error('VM missing');
-    var stage = vm.runtime.getTargetForStage();
-    if (!stage) throw new Error('No stage target');
-    await vm.importSpriteCostume(blob, {targetId: stage.id}); // add as backdrop
-  }
-
-  whenVMReady(async function(){
-    try{
-      console.log('[SASC] Preloading Apple + Sky (local-first)…');
-      await addSpriteFromURL(assetURL(cfg.APPLE_SPRITE3));
-      await addBackdropFromURL(assetURL(cfg.SKY_PNG));
-      console.log('[SASC] Apple + Sky loaded (local)');
-    }catch(e1){
-      console.warn('[SASC] Local preload failed; trying CDN fallback', e1);
-      try{
-        await addSpriteFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.APPLE_SPRITE3+'/get/');
-        await addBackdropFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.SKY_PNG+'/get/');
-        console.log('[SASC] Apple + Sky loaded (CDN)');
-      }catch(e2){
-        console.error('[SASC] Apple/Sky load failed (local+CDN)', e2);
-      }
-    }
-  });
-})();
- /* --- /SASC PRELOAD APPLE+SKY --- */
 </script>
+  <script>(function boot(){
+    const log = m => (window.__sascLog ? __sascLog(m) : console.log("[SASC]", m));
+    try {
+      const app = document.getElementById("app");
+      const GUI = window.GUI;
+      if (!GUI) { log("ERROR: window.GUI missing"); return; }
+      if (typeof GUI.setAppElement === "function") GUI.setAppElement(app);
+      if (typeof GUI.render === "function") {
+        GUI.render(app);
+        log("GUI mounted via GUI.render(app)");
+      } else {
+        let Wrapped = GUI.default || GUI.GUI || GUI;
+        if (typeof GUI.AppStateHOC === "function") Wrapped = GUI.AppStateHOC(Wrapped);
+        if (typeof GUI.ProjectLoaderHOC === "function") Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+        if (typeof GUI.HashParserHOC === "function") Wrapped = GUI.HashParserHOC(Wrapped);
+        const props = {
+          isPlayerOnly: false,
+          isFullScreen: false,
+          canUseCloud: false,
+          projectId: (location.hash && /\d+/.test(location.hash)) ? undefined : "0"
+        };
+        const el = window.React.createElement(Wrapped, props);
+        window.ReactDOM.render(el, app);
+        log("GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=" + (props.projectId || "hash"));
+      }
+      let waited = 0;
+      const tick = setInterval(() => {
+        const vm = window.vm || (GUI && GUI.vm);
+        if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) {
+          log("[VM] ready: " + vm.runtime.targets.length + " targets");
+          clearInterval(tick);
+          window.SASC_VM_READY = true;
+        }
+        if ((waited += 250) > 15000) { clearInterval(tick); log("VM not ready in time"); }
+      }, 250);
+    } catch (e) { (window.__sascLog||console.error)("BOOT ERROR: " + (e.stack || e)); }
+  })();</script>
 </body>
 </html>
