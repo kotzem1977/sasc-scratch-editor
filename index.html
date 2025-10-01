@@ -7,8 +7,8 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-    <!-- Tiny error bubble so you see why a page is black -->
     <script>
+      // Small bubble for crash messages (helps avoid "black screen")
       (function(){
         function bubble(msg){
           try{
@@ -24,8 +24,8 @@
       })();
     </script>
 
-    <!-- Local-first asset shim (+ subpath-safe libs) -->
     <script>
+      // Local-first asset shim with verbose logging
       (function(){
         if (!window.fetch) return;
         const origFetch = window.fetch.bind(window);
@@ -36,6 +36,12 @@
 
         const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
         const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+
+        // The two asset ids we’ve published locally
+        const LOCAL_PINNED = new Set([
+          '3826a4091a33e4d26f87a2fac7cf796b.svg', // Apple
+          'e7c147730f19d284bcd7b3f00af19bb6.svg'  // Blue Sky
+        ]);
 
         function urlOf(input){
           try{
@@ -52,45 +58,68 @@
         }
         function extractMd5ext(u){
           if (!u) return null;
+          // internalapi/asset/<md5ext>/get/
           let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
           if (m) return m[1];
-          m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
-          if (m && u.pathname.includes('/static/assets/')) return m[1];
+          // /static/assets/<md5ext>
+          m = u.pathname.match(/\/static\/assets\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
+          if (m) return m[1];
           return null;
         }
-        function localAssetURL(md5ext){
-          return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
-        }
+
+        function localURL(md5ext){ return LOCAL_ASSET_PREFIX + md5ext; }
         async function tryLocalThenRemote(init, md5ext){
-          const local = localAssetURL(md5ext);
+          const local = localURL(md5ext);
+          console.log('[ASSET]', md5ext, '→ try local', local);
           if (local) {
             const r = await origFetch(local, init);
+            console.log('[ASSET]', md5ext, 'local status', r.status);
             if (r.ok) return r;
           }
           const remote = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
+          console.log('[ASSET]', md5ext, '→ fallback remote', remote);
           return origFetch(remote, init);
         }
 
         window.fetch = async function(input, init){
           const u = urlOf(input);
+
+          // libraries/*.json should come from our repo (subpath-safe)
           if (isLibJson(u)) {
             const libURL = toProjectURL(u);
+            console.log('[LIB]', u.href, '→', libURL);
             return (typeof input==='string') ? origFetch(libURL, init)
                                              : origFetch(new Request(libURL, input), init);
           }
+
+          // subpath-safe static & chunks
           if (needsSubpathRewrite(u)) {
             const projURL = toProjectURL(u);
+            // be quiet for noisy static/chunks
             return (typeof input==='string') ? origFetch(projURL, init)
                                              : origFetch(new Request(projURL, input), init);
           }
+
+          // Intercept any asset request by md5ext
           const md5ext = extractMd5ext(u);
-          if (md5ext) return tryLocalThenRemote(init, md5ext);
+          if (md5ext) {
+            // Force our two known assets to local only
+            if (LOCAL_PINNED.has(md5ext)) {
+              const forced = localURL(md5ext);
+              console.log('[ASSET]', md5ext, 'FORCED local', forced);
+              const req = (typeof input==='string') ? forced : new Request(forced, input);
+              return origFetch(req, init);
+            }
+            // Others: local -> remote fallback
+            return tryLocalThenRemote(init, md5ext);
+          }
+
           return origFetch(input, init);
         };
       })();
     </script>
 
-    <!-- Load the fully-bundled GUI (includes React etc.) -->
+    <!-- Fully bundled GUI (includes React etc.) -->
     <script defer src="gui.js" onerror="__bubbleError && __bubbleError('gui.js failed to load')"></script>
 
     <style>
