@@ -7,93 +7,104 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-    <!-- Subpath + library fetch fixer: keep /static, /chunks and /libraries working from /sasc-scratch-editor/ -->
+    <!-- Single, combined fetch shim: subpath-safe libs + local-first md5ext assets -->
     <script>
     (function(){
-      const origFetch = window.fetch && window.fetch.bind(window);
-      if (!origFetch) return;
+      if (!window.fetch) return;
+      const origFetch = window.fetch.bind(window);
 
+      // Where our page lives (e.g. /sasc-scratch-editor/)
       const basePath = location.pathname.replace(/\/[^/]*$/, '/');
+      // Absolute base URL for things we host in this repo
+      const ABS_BASE = new URL(basePath, location.origin).toString();
+      const LOCAL_ASSET_PREFIX = new URL('./static/assets/', ABS_BASE).toString();
+
+      // Helpers
       const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
       const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
 
-      function needsSubpathRewrite(u) {
-        return typeof u === 'string' && SUBPATH_PREFIXES.some(p => u.startsWith(p));
-      }
-      function toProjectURL(u) {
-        const rel = u.replace(/^\//, '');
-        return new URL(rel, location.origin + basePath).toString();
-      }
-      function maybeLibraryRawURL(u) {
-        if (typeof u !== 'string') return null;
-        const m = u.match(LIB_JSON);
-        if (!m) return null;
-        const file = m[0].replace(/^\//, '');
-        return new URL(file, location.origin + basePath).toString();
-      }
-
-      window.fetch = function(u, opts){
-        const lib = maybeLibraryRawURL(u);
-        if (lib) return origFetch.call(this, lib, opts);
-        if (needsSubpathRewrite(u)) return origFetch.call(this, toProjectURL(u), opts);
-        return origFetch.call(this, u, opts);
-      };
-    })();
-    </script>
-
-    <!-- Local-first md5ext asset hook: try /static/assets/<md5ext> first, else fallback to Scratch CDN -->
-    <script>
-    (function(){
-      const origFetch = window.fetch && window.fetch.bind(window);
-      if (!origFetch) return;
-
-      const LOCAL_PREFIX = new URL('./static/assets/', location.href).toString();
-
-      function toLocal(md5ext) {
-        return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? (LOCAL_PREFIX + md5ext) : null;
-      }
-
-      function rewrite(url) {
+      function urlOf(input){
         try {
-          const u = new URL(url, location.href);
-          // /internalapi/asset/<md5ext>/get/
-          const m1 = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
-          if (m1) return { md5ext: m1[1] };
-          // Any bare md5ext on our origin (rare but safe)
-          const m2 = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
-          if (m2 && (u.hostname === location.hostname || u.pathname.startsWith('/static/assets/'))) {
-            return { md5ext: m2[1] };
-          }
-        } catch(_){}
+          return (typeof input === 'string')
+            ? new URL(input, location.href)
+            : (input && typeof input.url === 'string' ? new URL(input.url, location.href) : null);
+        } catch { return null; }
+      }
+
+      function isLibJson(u){
+        return !!(u && LIB_JSON.test(u.pathname));
+      }
+      function needsSubpathRewrite(u){
+        return !!(u && SUBPATH_PREFIXES.some(p => u.pathname.startsWith(p)));
+      }
+      function toProjectURL(u){
+        const rel = u.pathname.replace(/^\//, '') + (u.search || '') + (u.hash || '');
+        return new URL(rel, ABS_BASE).toString();
+      }
+
+      function extractMd5ext(u){
+        if (!u) return null;
+        // /internalapi/asset/<md5ext>/get/
+        let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
+        if (m) return m[1];
+        // bare /static/assets/<md5ext> (just in case)
+        m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
+        if (m && (u.pathname.includes('/static/assets/'))) return m[1];
         return null;
       }
 
-      async function tryLocalThenRemote(init, md5ext) {
-        const localURL  = toLocal(md5ext);
-        if (localURL) {
-          const resLocal = await origFetch(localURL, init);
-          if (resLocal.ok) return resLocal;
-        }
-        const remoteURL = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
-        return origFetch(remoteURL, init);
+      function localAssetURL(md5ext){
+        return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
       }
 
-      window.fetch = async function(input, init) {
-        if (typeof input === 'string') {
-          const r = rewrite(input);
-          if (r?.md5ext) return tryLocalThenRemote(init, r.md5ext);
-          return origFetch(input, init);
-        } else if (input && typeof input.url === 'string') {
-          const r = rewrite(input.url);
-          if (r?.md5ext) return tryLocalThenRemote(init, r.md5ext);
-          return origFetch(input, init);
+      async function tryLocalThenRemote(init, md5ext){
+        const local = localAssetURL(md5ext);
+        if (local) {
+          const r = await origFetch(local, init);
+          if (r.ok) return r;
         }
+        const remote = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
+        return origFetch(remote, init);
+      }
+
+      window.fetch = async function(input, init){
+        const u = urlOf(input);
+
+        // 1) Force /libraries/*.json to load from our repo path
+        if (isLibJson(u)) {
+          const libURL = toProjectURL(u);
+          if (typeof input === 'string') return origFetch(libURL, init);
+          return origFetch(new Request(libURL, input), init);
+        }
+
+        // 2) Rewrite /static/ and /chunks/ from absolute to our subpath
+        if (needsSubpathRewrite(u)) {
+          const projURL = toProjectURL(u);
+          if (typeof input === 'string') return origFetch(projURL, init);
+          return origFetch(new Request(projURL, input), init);
+        }
+
+        // 3) md5ext assets: check our local copy first, then CDN
+        const md5ext = extractMd5ext(u);
+        if (md5ext) return tryLocalThenRemote(init, md5ext);
+
+        // Default
         return origFetch(input, init);
       };
+
+      // Tiny on-screen error helper so "black screen" shows a reason
+      function showErr(msg){
+        const d = document.createElement('div');
+        d.style.cssText = 'position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
+        d.textContent = '[Bootstrap] ' + msg;
+        document.documentElement.appendChild(d);
+      }
+      window.addEventListener('error', e => showErr(e.message || 'script error'));
+      window.addEventListener('unhandledrejection', e => showErr((e.reason && (e.reason.message || String(e.reason))) || 'promise rejection'));
     })();
     </script>
 
-    <!-- Main bundle built from scratch-gui/dist -->
+    <!-- Your built bundle from scratch-gui/dist -->
     <script defer src="scratch-gui.js"></script>
 
     <style>
