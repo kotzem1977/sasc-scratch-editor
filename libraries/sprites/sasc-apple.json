@@ -1,0 +1,29 @@
+{
+  "name": "Apple",
+  "isStage": false,
+  "variables": {},
+  "lists": {},
+  "broadcasts": {},
+  "blocks": {},
+  "comments": {},
+  "currentCostume": 0,
+  "costumes": [
+    {
+      "name": "apple",
+      "md5ext": "3826a4091a33e4d26f87a2fac7cf796b.svg",
+      "dataFormat": "svg",
+      "rotationCenterX": 0,
+      "rotationCenterY": 0
+    }
+  ],
+  "sounds": [],
+  "volume": 100,
+  "layerOrder": 1,
+  "visible": true,
+  "x": 0,
+  "y": 0,
+  "size": 100,
+  "direction": 90,
+  "draggable": false,
+  "rotationStyle": "all around"
+}
