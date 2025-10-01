@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>SASC Scratch Editor — index (v6)</title>
+  <title>SASC Scratch Editor — index (v7)</title>
 
-  <!-- React/Redux UMD (exact versions that work with GUI) -->
+  <!-- React/Redux UMDs compatible with scratch-gui -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
@@ -13,16 +13,17 @@
   <style>
     html,body,#root{height:100%;margin:0}
     #root{display:flex}
+
     /* SASC console overlay */
     #sasc-console{
-      position:fixed;left:10px;bottom:10px;width:360px;height:180px;z-index:99999;
+      position:fixed;left:10px;bottom:10px;width:360px;height:190px;z-index:99999;
       background:rgba(0,0,0,.8);color:#0f0;font:12px/1.35 monospace;
       border:1px solid #333;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.4);
       display:flex;flex-direction:column;overflow:hidden
     }
-    #sasc-console header{padding:6px 8px;background:#111;color:#9cf}
+    #sasc-console header{padding:6px 8px;background:#111;color:#9cf;display:flex;gap:.5rem;align-items:center}
     #sasc-console pre{flex:1;margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto}
-    #sasc-console button{all:unset;cursor:pointer;color:#9cf;margin-left:auto}
+    #sasc-console button{all:unset;cursor:pointer;color:#9cf;border:1px solid #345;padding:2px 6px;border-radius:4px}
   </style>
 </head>
 <body>
@@ -32,7 +33,8 @@
   <div id="sasc-console" aria-live="polite">
     <header>
       <strong>SASC</strong>
-      <button id="sasc-clear" title="Clear">clear</button>
+      <button id="sasc-clear">clear</button>
+      <button id="sasc-dump">dump win keys</button>
     </header>
     <pre></pre>
   </div>
@@ -43,46 +45,29 @@
       const log = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.log(...a); };
       const logErr = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.error(...a); };
       document.getElementById('sasc-clear').onclick = ()=>{ pre.textContent=''; };
+      document.getElementById('sasc-dump').onclick = ()=>{ log('window keys:', Object.keys(window).sort().slice(0,200).join(', ')); };
 
-      // Aliases some UMDs expect
-      if (window.React && !window.react)       { window.react = window.React; log('react alias set'); }
+      // UMD aliases (some bundles read lowercase)
+      if (window.React && !window.react) { window.react = window.React; log('react alias set'); }
       if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; log('react-dom alias set'); }
-      if (window.Redux && !window.redux)       { window.redux = window.Redux; log('redux alias set'); }
+      if (window.Redux && !window.redux) { window.redux = window.Redux; log('redux alias set'); }
 
       log('href:', location.href);
       log('React present:', !!window.React, 'version:', window.React && window.React.version);
       log('ReactDOM present:', !!window.ReactDOM);
       log('Redux present:', !!window.Redux);
 
-      // ---------- PATH HELPERS ----------
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/');         // "/<user>/<repo>/"
-      const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2);     // ["<user>","<repo>"]
-      const repoRoot = '/' + ownerRepo.join('/');                           // "/<user>/<repo>"
-      const withRepo = p => (repoRoot + '/' + p.replace(/^\/+/, '')).replace(/\/{2,}/g,'/');
+      // ---- helpers for paths within your repo ----
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/');       // "/<user>/<repo>/"
+      const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2);
+      const repoRoot = '/' + ownerRepo.join('/');
+      const withRepo = p => (repoRoot + '/' + p.replace(/^\/+/, '')).replace(/\/{2,}/g, '/');
 
-      // ---------- FETCH/XHR REWRITE + FALLBACK ----------
-      // Map: libraries/* → repo, /static/* → repo, and *internalapi/asset/<md5.ext>/get → try local /static/assets/<md5.ext>, else original CDN
-      function rewriteToLocal(url) {
-        try {
-          const u = new URL(url, location.href);
-          // 1) Our library JSONs
-          if (/^\/libraries\//.test(u.pathname)) {
-            u.pathname = withRepo(u.pathname);
-            return u.toString();
-          }
-          // 2) Our built static/chunks (if any)
-          if (/^\/(static|chunks)\//.test(u.pathname)) {
-            u.pathname = withRepo(u.pathname);
-            return u.toString();
-          }
-          return url;
-        } catch { return url; }
-      }
-
+      // ---- LOCAL-FIRST asset probe for internalapi/asset/*/get ----
       function localAssetURLForInternalAPI(url) {
         try {
           const u = new URL(url, location.href);
-          const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg))\/get/i);
+          const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
           if (m) return withRepo('static/assets/' + m[1]);
         } catch {}
         return null;
@@ -98,45 +83,37 @@
           const origURL = (typeof input === 'string') ? input : (input && input.url);
           let url = origURL;
 
-          // library/static paths
-          url = rewriteToLocal(url);
+          // IMPORTANT: do NOT rewrite /libraries/* anymore. Use official library JSON to avoid schema drift.
+          // Keep only the local-first asset override.
 
-          // asset probe?
           const localAsset = localAssetURLForInternalAPI(origURL || '');
           if (localAsset) {
-            // Log request
-            const mm = (origURL||'').match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg))\/get/i);
+            const mm = (origURL||'').match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
             if (mm) log('[ASSET REQUEST]', mm[1], '←', origURL);
 
-            // Try local first
             try {
               const r = await ofetch(localAsset, init);
               if (r && r.ok) return r;
-            } catch(e){ /* ignore and fallback */ }
+            } catch(e){ /* fallthrough */ }
 
-            // Fallback to original CDN URL
             return ofetch(origURL, init);
           }
-
           return ofetch(url, init);
         };
 
-        log('[fetch hook] installed');
+        log('[fetch hook] installed (libraries untouched, assets local-first)');
       })();
 
-      // Install XHR hook (some sub-libs still use it)
+      // Install XHR hook (no /libraries rewrite here either)
       (function installXHR(){
         if (window.__sascXHRHookInstalled) return;
         window.__sascXHRHookInstalled = true;
         const oopen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url){
-          const mapped = rewriteToLocal(url);
           const localAsset = localAssetURLForInternalAPI(url);
-          // We can’t easily do the local-first fallback here without replacing send; still map libraries/static
-          const finalURL = localAsset || mapped;
-          return oopen.apply(this, [method, finalURL]);
+          return oopen.apply(this, [method, localAsset || url]);
         };
-        log('[xhr hook] installed');
+        log('[xhr hook] installed (assets local-first)');
       })();
 
       // Unhandled promise rejections → overlay
@@ -144,9 +121,9 @@
         logErr('[unhandledrejection]:', ev.reason && (ev.reason.stack || ev.reason.toString()));
       });
 
-      // ---------- LOAD GUI ----------
+      // ---- load GUI UMD and mount via AppStateHOC ----
       const s = document.createElement('script');
-      s.src = 'scratch-gui.js?v=stable-boot-v6_' + Date.now();
+      s.src = 'scratch-gui.js?v=stable-boot-v7_' + Date.now();
       s.defer = true;
       s.onload = () => {
         log('GUI script loaded');
@@ -157,9 +134,7 @@
 
           const Root = AppStateHOC(GUI);
           const rootEl = document.getElementById('root');
-          // react-modal ARIA hint (warning-only; safe to ignore)
-          rootEl.setAttribute('aria-hidden', 'false');
-
+          rootEl.setAttribute('aria-hidden','false');
           window.ReactDOM.render(window.React.createElement(Root, {}), rootEl);
           log('Mounted via GUI.AppStateHOC(GUI)');
         } catch (e) {
@@ -170,6 +145,5 @@
       document.head.appendChild(s);
     })();
   </script>
-
 </body>
 </html>
