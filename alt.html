@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (v6)</title>
+  <title>SASC Scratch Editor — alt (v7)</title>
 
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
@@ -12,17 +12,17 @@
   <style>
     html,body,#root{height:100%;margin:0}
     #root{display:flex}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;height:180px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;font:12px/1.35 monospace;border:1px solid #333;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
-    #sasc-console header{padding:6px 8px;background:#111;color:#9cf}
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;height:190px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;font:12px/1.35 monospace;border:1px solid #333;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+    #sasc-console header{padding:6px 8px;background:#111;color:#9cf;display:flex;gap:.5rem;align-items:center}
     #sasc-console pre{flex:1;margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto}
-    #sasc-console button{all:unset;cursor:pointer;color:#9cf;margin-left:auto}
+    #sasc-console button{all:unset;cursor:pointer;color:#9cf;border:1px solid #345;padding:2px 6px;border-radius:4px}
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <div id="sasc-console" aria-live="polite">
-    <header><strong>SASC</strong> <button id="sasc-clear">clear</button></header>
+    <header><strong>SASC</strong> <button id="sasc-clear">clear</button> <button id="sasc-dump">dump win keys</button></header>
     <pre></pre>
   </div>
 
@@ -32,6 +32,7 @@
       const log = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.log(...a); };
       const logErr = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.error(...a); };
       document.getElementById('sasc-clear').onclick = ()=>{ pre.textContent=''; };
+      document.getElementById('sasc-dump').onclick = ()=>{ log('window keys:', Object.keys(window).sort().slice(0,200).join(', ')); };
 
       if (window.React && !window.react) window.react = window.React, log('react alias set');
       if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM, log('react-dom alias set');
@@ -45,22 +46,12 @@
       const basePath = location.pathname.replace(/\/[^/]*$/, '/');
       const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2);
       const repoRoot = '/' + ownerRepo.join('/');
-      const withRepo = p => (repoRoot + '/' + p.replace(/^\/+/, '')).replace(/\/{2,}/g,'/');
+      const withRepo = p => (repoRoot + '/' + p.replace(/^\/+/, '')).replace(/\/{2,}/g, '/');
 
-      function rewriteToLocal(url) {
-        try {
-          const u = new URL(url, location.href);
-          if (/^\/libraries\//.test(u.pathname) || /^\/(static|chunks)\//.test(u.pathname)) {
-            u.pathname = withRepo(u.pathname);
-            return u.toString();
-          }
-          return url;
-        } catch { return url; }
-      }
       function localAssetURLForInternalAPI(url) {
         try {
           const u = new URL(url, location.href);
-          const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg))\/get/i);
+          const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
           if (m) return withRepo('static/assets/' + m[1]);
         } catch {}
         return null;
@@ -72,11 +63,9 @@
         const ofetch = window.fetch.bind(window);
         window.fetch = async function(input, init){
           const origURL = (typeof input === 'string') ? input : (input && input.url);
-          let url = origURL;
-          url = rewriteToLocal(url);
           const localAsset = localAssetURLForInternalAPI(origURL || '');
           if (localAsset) {
-            const mm = (origURL||'').match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg))\/get/i);
+            const mm = (origURL||'').match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
             if (mm) log('[ASSET REQUEST]', mm[1], '←', origURL);
             try {
               const r = await ofetch(localAsset, init);
@@ -84,9 +73,9 @@
             } catch(e){}
             return ofetch(origURL, init);
           }
-          return ofetch(url, init);
+          return ofetch(input, init);
         };
-        log('[fetch hook] installed');
+        log('[fetch hook] installed (libraries untouched, assets local-first)');
       })();
 
       (function installXHR(){
@@ -94,12 +83,10 @@
         window.__sascXHRHookInstalled = true;
         const oopen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url){
-          const mapped = rewriteToLocal(url);
           const localAsset = localAssetURLForInternalAPI(url);
-          const finalURL = localAsset || mapped;
-          return oopen.apply(this, [method, finalURL]);
+          return oopen.apply(this, [method, localAsset || url]);
         };
-        log('[xhr hook] installed');
+        log('[xhr hook] installed (assets local-first)');
       })();
 
       window.addEventListener('unhandledrejection', ev => {
@@ -107,7 +94,7 @@
       });
 
       const s = document.createElement('script');
-      s.src = 'scratch-gui.js?v=stable-boot-v6_' + Date.now();
+      s.src = 'scratch-gui.js?v=stable-boot-v7_' + Date.now();
       s.defer = true;
       s.onload = () => {
         log('GUI script loaded');
@@ -128,6 +115,5 @@
       document.head.appendChild(s);
     })();
   </script>
-
 </body>
 </html>
