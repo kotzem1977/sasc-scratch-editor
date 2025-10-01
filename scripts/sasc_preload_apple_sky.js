@@ -1,138 +1,99 @@
-/* --- SASC PRELOAD APPLE + SKY (idempotent) --- */
+/* --- SASC PRELOAD APPLE + SKY (idempotent, local-only) --- */
 (function preloadAppleSky(){
   if (window.__sascPreloadInstalled) return;
   window.__sascPreloadInstalled = true;
 
-  var DEFAULTS = {
-    // If you have a real sprite bundle, set APPLE_SPRITE3 to "<md5>.sprite3".
-    // Otherwise we can create a sprite from a PNG/JPG below via APPLE_PNG.
-    APPLE_SPRITE3: null,
-    APPLE_PNG:     null,  // e.g. "<md5>.png" under /static/assets/
-    SKY_PNG:       null   // e.g. "<md5>.png" under /static/assets/
-  };
-  var CFG = Object.assign({}, DEFAULTS, (window.SASC_ASSETS || {}));
+  var CFG = Object.assign({
+    APPLE_SPRITE3: null,   // optional: <md5>.sprite3 if you ever mirror sprite3
+    APPLE_PNG:     null,   // typical for our flow: <md5>.png|jpg|jpeg in /static/assets
+    SKY_PNG:       null    // backdrop: <md5>.png|jpg|jpeg in /static/assets
+  }, (window.SASC_ASSETS || {}));
 
   function log(m){
-    try{
-      var p = document.querySelector('#sasc-console pre');
-      if (p) p.textContent += m + '\n';
-    }catch(_){}
+    try { const p = document.querySelector('#sasc-console pre'); if (p) p.textContent += m + '\n'; } catch(_){}
     console.log('[SASC preload]', m);
   }
 
-  function repoBase(){
-    // /<user>/<repo>/.../index.html -> "/<user>/<repo>/"
-    var base = location.pathname.replace(/\/[^/]*$/, '/');
-    return base;
-  }
-  function localUrl(md5ext){
-    return repoBase().replace(/\/$/, '') + '/static/assets/' + md5ext;
-  }
-
   function whenVMReady(cb, timeoutMs){
-    timeoutMs = timeoutMs || 15000;
-    var t0 = Date.now();
-    (function tick(){
-      var GUI = window.GUI;
-      var vm = window.vm || (GUI && GUI.vm);
+    var t0 = Date.now(), to = timeoutMs || 20000;
+    var iv = setInterval(function(){
+      var GUI = window.GUI, vm = window.vm || (GUI && GUI.vm);
       if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length){
-        return cb(vm);
+        clearInterval(iv); cb(vm); return;
       }
-      if (Date.now() - t0 > timeoutMs) {
-        log('VM not ready after ' + timeoutMs + 'ms; continuing anyway');
-        return cb(vm || null);
-      }
-      setTimeout(tick, 150);
-    })();
+      if (Date.now() - t0 > to){ clearInterval(iv); log('VM not ready in time'); }
+    }, 250);
   }
 
-  async function addBackdropFromURL(url){
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('backdrop fetch ' + r.status);
-    var blob = await r.blob();               // image/*
-    var GUI = window.GUI;
-    if (GUI && GUI.handleBackdropUpload && GUI.vm){
-      await GUI.handleBackdropUpload(blob, blob.type || 'image/png');
-      return;
-    }
-    var vm = window.vm || (GUI && GUI.vm);
-    if (!vm) throw new Error('VM missing for backdrop');
-    // Fallback path (older builds):
-    if (vm.loadBackdrop && vm.loadBackdropFromURL){
-      await vm.loadBackdropFromURL(url);
-      return;
-    }
-    // Last-ditch: treat as costume on stage (works in many builds)
-    if (vm.addBackdrop){
-      await vm.addBackdrop(blob);
-      return;
-    }
-    log('No suitable backdrop importer found');
-  }
-
-  async function addSpriteFromURL(url){
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('sprite fetch ' + r.status);
-    var ext = (url.split('.').pop() || '').toLowerCase();
-    var GUI = window.GUI;
-
-    // Image → sprite
-    if (/(png|jpg|jpeg|gif|svg)$/.test(ext)){
-      var blob = await r.blob(); // image/*
-      if (GUI && GUI.handleSpriteUpload && GUI.vm){
-        await GUI.handleSpriteUpload(blob, blob.type || 'image/png');
-        return;
-      }
-      var vm = window.vm || (GUI && GUI.vm);
-      if (!vm) throw new Error('VM missing for sprite');
-      // Best effort: add as costume to selected target
-      if (vm.addCostume) {
-        await vm.addCostume(blob);
-        return;
-      }
-      log('No suitable sprite importer found (image fallback)');
-      return;
-    }
-
-    // .sprite3 /.sprite2
-    var ab = await r.arrayBuffer();
-    if (GUI && GUI.handleSpriteUpload && GUI.vm){
-      await GUI.handleSpriteUpload(new Blob([ab], {type:'application/zip'}));
-      return;
-    }
-    var vm2 = window.vm || (GUI && GUI.vm);
-    if (!vm2) throw new Error('VM missing for sprite');
-    if (vm2.addSprite) {
-      await vm2.addSprite(new Uint8Array(ab));
-      return;
-    }
-    log('No suitable sprite importer found (.sprite3 fallback)');
-  }
-
-  whenVMReady(async function(){
+  async function addBackdropFromURL(vm, url){
     try{
-      // SKY backdrop
-      if (CFG.SKY_PNG){
-        var skyURL = localUrl(CFG.SKY_PNG);
-        log('Preload: adding Sky backdrop from ' + skyURL);
-        await addBackdropFromURL(skyURL);
+      const r = await fetch(url); if (!r.ok) throw new Error('HTTP '+r.status);
+      const blob = await r.blob();
+      const m = /\.(\w+)$/.exec(url); const ext = (m && m[1]) ? m[1] : 'png';
+      const md5ext = url.split('/').pop();
+      await vm.addBackdrop(blob, {
+        name: 'Sky',
+        md5: md5ext,
+        rotationCenterX: 240, rotationCenterY: 180,
+        type: (blob.type || ('image/'+ext))
+      });
+      log('Backdrop added from ' + url);
+    }catch(e){ log('Backdrop add error: ' + e); }
+  }
+
+  async function addSpriteFromURL(vm, url, name){
+    try{
+      const r = await fetch(url); if (!r.ok) throw new Error('HTTP '+r.status);
+      const blob = await r.blob();
+      const m = /\.(\w+)$/.exec(url); const ext = (m && m[1]) ? m[1].toLowerCase() : '';
+      if (ext === 'sprite3'){
+        await vm.addSprite(blob);
+        log('Sprite .sprite3 added from ' + url);
+        return;
+      }
+      // Build bitmap costume sprite from raw image
+      const arrayBuf = await blob.arrayBuffer();
+      const md5ext = url.split('/').pop();
+      const costume = {
+        name: name + '-costume',
+        md5ext,
+        dataFormat: (ext || 'png').toUpperCase(),
+        rotationCenterX: 48, rotationCenterY: 48
+      };
+      await vm.addSprite2({
+        name,
+        isStage: false,
+        visible: true,
+        x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around',
+        costumes: [costume],
+        sounds: []
+      }, { zipSkinBuffers: { [md5ext]: new Uint8Array(arrayBuf) } });
+      log('Sprite created from image ' + url);
+    }catch(e){ log('Sprite add error: ' + e); }
+  }
+
+  whenVMReady(async function(vm){
+    try{
+      // Backdrop (Sky) first
+      if (CFG.SKY_PNG) {
+        const skyURL = (location.pathname.replace(/\/[^/]*$/, '') + '/static/assets/' + CFG.SKY_PNG).replace(/\/{2,}/g,'/');
+        await addBackdropFromURL(vm, skyURL);
+      } else {
+        log('SKY_PNG not set; skipping backdrop');
       }
 
-      // APPLE sprite (prefer .sprite3; otherwise a PNG sprite)
+      // Apple next
       if (CFG.APPLE_SPRITE3) {
-        var spr3URL = localUrl(CFG.APPLE_SPRITE3);
-        log('Preload: adding Apple sprite3 from ' + spr3URL);
-        await addSpriteFromURL(spr3URL);
+        const aURL = (location.pathname.replace(/\/[^/]*$/, '') + '/static/assets/' + CFG.APPLE_SPRITE3).replace(/\/{2,}/g,'/');
+        await addSpriteFromURL(vm, aURL, 'Apple');
       } else if (CFG.APPLE_PNG) {
-        var appleURL = localUrl(CFG.APPLE_PNG);
-        log('Preload: adding Apple PNG sprite from ' + appleURL);
-        await addSpriteFromURL(appleURL);
+        const aURL = (location.pathname.replace(/\/[^/]*$/, '') + '/static/assets/' + CFG.APPLE_PNG).replace(/\/{2,}/g,'/');
+        await addSpriteFromURL(vm, aURL, 'Apple');
+      } else {
+        log('APPLE_PNG/APPLE_SPRITE3 not set; skipping Apple');
       }
-
-      log('Preload complete.');
     }catch(e){
-      log('Preload error: ' + (e && e.message ? e.message : e));
-      console.error(e);
+      log('Preload error: ' + e);
     }
   });
 })();
