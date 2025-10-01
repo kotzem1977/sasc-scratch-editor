@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -7,82 +7,94 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- React/DOM UMD -->
-  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-is@16.13.1/umd/react-is.production.min.js" crossorigin></script>
-
+  <!-- UMD aliases to avoid forwardRef black screen -->
   <script>
-    window.global = window;
-    window.process = window.process || { env: { NODE_ENV: 'production' } };
-
-    // Lowercase aliases for UMD externals
-    (function aliasUMDGlobals(){
-      if (window.React)       window.react = window.React;
-      if (window.ReactDOM)    window['react-dom'] = window.ReactDOM;
-      if (window.ReactIs)     window['react-is']  = window.ReactIs;
-    })();
-
-    if (!window.react || !window.react.forwardRef) {
-      console.error('[Bootstrap] React global missing or wrong: window.react=', window.react);
-    }
+  (function(){
+    if (window.react && !window.React)      window.React = window.react;
+    if (window.reactDom && !window.ReactDOM) window.ReactDOM = window.reactDom;
+    if (window.redux && !window.Redux) window.Redux = window.redux;
+  })();
   </script>
 
-  <!-- Local asset rewrite -->
+  <!-- Subpath + asset rewrite shim (same as index) -->
   <script>
-  (function () {
+  (function(){
     const origFetch = window.fetch && window.fetch.bind(window);
     if (!origFetch) return;
 
-    const INTERNAL_ASSET_RE = /\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i;
-    const isScratchAssetHost =
-      h => (h === 'assets.scratch.mit.edu' || h === 'cdn.assets.scratch.mit.edu');
+    const REPO_SUBPATH = '/sasc-scratch-editor/';
+    const BASE = location.origin + REPO_SUBPATH;
+    const LOCAL_ASSETS = BASE + 'static/assets/';
 
-    function toLocalAssetURL(md5ext) {
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
-      return new URL('static/assets/' + md5ext, location.origin + basePath).toString();
-    }
-    function rewrite(url) {
+    const LIB_RX    = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+    const SUB_RX    = /^\/(static|chunks)\//;
+    const INT_ASSET = /^\/?internalapi\/asset\/([a-f0-9]{32}\.[a-z0-9]+)\/get\/?$/i;
+
+    function toRepo(urlLike){
       try {
-        const u = new URL(url, location.href);
-        if (isScratchAssetHost(u.hostname)) {
-          const m = u.pathname.match(INTERNAL_ASSET_RE);
-          if (m) return toLocalAssetURL(m[1]);
+        const u = new URL(urlLike, location.href);
+        if (u.origin === location.origin) {
+          if (LIB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
+          if (SUB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
+          const m = u.pathname.match(INT_ASSET);
+          if (m && m[1]) u.href = LOCAL_ASSETS + m[1];
         }
-        {
-          const m = u.pathname.match(INTERNAL_ASSET_RE);
-          if (m) return toLocalAssetURL(m[1]);
-        }
-      } catch (_) {}
-      return url;
+        if (LIB_RX.test(u.pathname))  u.href = BASE + 'libraries/' + u.pathname.split('/').pop();
+        if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
+        const m2 = u.pathname.match(INT_ASSET);
+        if (m2 && m2[1]) u.href = LOCAL_ASSETS + m2[1];
+        return u.toString();
+      } catch {
+        return urlLike;
+      }
     }
 
-    window.fetch = function (input, init) {
+    window.fetch = function(input, init){
       if (typeof input === 'string') {
-        return origFetch(rewrite(input), init);
+        const fixed = toRepo(input);
+        if (fixed !== input) console.log('[SASC] fetch →', input, '==>', fixed);
+        return origFetch(fixed, init);
       } else if (input && typeof input.url === 'string') {
-        const newURL = rewrite(input.url);
-        if (newURL !== input.url) input = new Request(newURL, input);
+        const fixed = toRepo(input.url);
+        if (fixed !== input.url) {
+          console.log('[SASC] fetch(Request) →', input.url, '==>', fixed);
+          input = new Request(fixed, input);
+        }
         return origFetch(input, init);
       }
       return origFetch(input, init);
     };
+
+    const origImage = window.Image;
+    if (origImage) {
+      window.Image = function(w,h){
+        const img = new origImage(w,h);
+        let _src = '';
+        Object.defineProperty(img, 'src', {
+          get(){ return _src; },
+          set(v){
+            const m = String(v).match(INT_ASSET);
+            if (m && m[1]) {
+              const fixed = LOCAL_ASSETS + m[1];
+              console.log('[SASC] image →', v, '==>', fixed);
+              _src = fixed;
+              return HTMLImageElement.prototype.setAttribute.call(img, 'src', fixed);
+            }
+            _src = v;
+            return HTMLImageElement.prototype.setAttribute.call(img, 'src', v);
+          }
+        });
+        return img;
+      };
+    }
   })();
   </script>
 
-  <script>
-    (function(){
-      var s = document.createElement('script');
-      s.defer = true;
-      s.src = 'scratch-gui.js?v=umd-aliases';
-      s.onerror = function(e){ console.error('[Bootstrap] Failed to load scratch-gui.js', e); };
-      document.head.appendChild(s);
-    })();
-  </script>
+  <script defer src="scratch-gui.js?v=stable-alt"></script>
 
   <style>
-    html,body {height:100%;margin:0}
-    body {overflow:hidden;background:#0f0f0f}
+    html, body { height:100%; margin:0; }
+    body { overflow:hidden; background:#0f0f0f; }
   </style>
 </head>
 <body></body>
