@@ -73,20 +73,5 @@
   }
 })();
 </script>
-    (function(){
-      try{
-        const app=document.getElementById('app');
-        if (window.GUI && typeof window.GUI.setAppElement === 'function') window.GUI.setAppElement(app);
-        const GUI=window.GUI;
-        let Wrapped = GUI.default || GUI.GUI || GUI;
-        Wrapped = GUI.AppStateHOC(Wrapped);
-        Wrapped = GUI.ProjectLoaderHOC ? GUI.ProjectLoaderHOC(Wrapped) : Wrapped;
-        Wrapped = GUI.HashParserHOC ? GUI.HashParserHOC(Wrapped) : Wrapped;
-        const el = window.React.createElement(Wrapped, {isPlayerOnly:false,isFullScreen:false,canUseCloud:false});
-        window.ReactDOM.render(el, app);
-        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI)))');
-      }catch(e){__sascLog('BOOT ERROR: '+(e.stack||e));console.error(e);}
-    })();
-  </script>
 </body>
 </html>
