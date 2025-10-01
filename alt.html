@@ -7,64 +7,7 @@
   <link rel="shortcut icon" href="static/favicon.ico" />
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- SASC: 1) Fix library JSON + subpath fetches when served from /alt.html -->
-  <script>
-  (function(){
-    const origFetch = window.fetch && window.fetch.bind(window);
-    if (!origFetch) return;
-
-    // Your repo coordinates
-    const OWNER  = 'kotzem1977';
-    const REPO   = 'sasc-scratch-editor';
-    const BRANCH = 'main';
-
-    // When you're at /alt.html, GUI may fetch "/static/..." and "/chunks/..."
-    // Rewrite those to live under the same folder as alt.html.
-    const basePath = location.pathname.replace(/\/[^/]*$/, '/');
-    const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
-    const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
-
-    function needsSubpathRewrite(u) {
-      return typeof u === 'string' && SUBPATH_PREFIXES.some(p => u.startsWith(p));
-    }
-    function toProjectURL(u) {
-      const rel = u.replace(/^\//, '');
-      return new URL(rel, location.origin + basePath).toString();
-    }
-    function maybeLibraryRawURL(u) {
-      if (typeof u !== 'string') return null;
-      const m = u.match(LIB_JSON);
-      if (!m) return null;
-      const file = m[0].replace(/^\//, '');
-      return `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${file}`;
-    }
-
-    window.fetch = function(input, init){
-      let u = input;
-      if (typeof u !== 'string' && u && typeof u.url === 'string') u = u.url;
-
-      // libraries/*.json (serve from raw to avoid any GH Pages mime/path edge cases)
-      const rawLib = maybeLibraryRawURL(u);
-      if (rawLib) {
-        const req = (typeof input === 'string') ? rawLib : new Request(rawLib, input);
-        return origFetch(req, init);
-      }
-
-      // /static or /chunks under same folder as this HTML
-      if (needsSubpathRewrite(u)) {
-        const fixed = toProjectURL(u);
-        const req = (typeof input === 'string') ? fixed : new Request(fixed, input);
-        return origFetch(req, init);
-      }
-
-      return origFetch(input, init);
-    };
-
-    console.log('[SASC/alt] subpath + libraries rewriter installed');
-  })();
-  </script>
-
-  <!-- SASC: 2) Force any /internalapi/* asset/project fetches to official hosts -->
+  <!-- Route any accidental /internalapi/* calls to official hosts (safe, tiny patch) -->
   <script>
   (function(){
     const origFetch = window.fetch && window.fetch.bind(window);
@@ -77,7 +20,7 @@
       try {
         const u = new URL(url, location.href);
 
-        // If GUI accidentally points to our origin for internalapi, route to Scratch.
+        // If GUI points to our origin for internalapi, redirect to Scratch
         if (u.pathname.startsWith('/internalapi/asset/')) {
           u.protocol = 'https:'; u.host = new URL(ASSET).host;
           return u.toString();
@@ -87,7 +30,7 @@
           return u.toString();
         }
 
-        // Also catch bare "internalapi/..." paths (no leading slash)
+        // Also catch bare "internalapi/..." (no leading slash)
         if (u.pathname.startsWith('internalapi/asset/')) {
           return ASSET + '/' + u.pathname.replace(/^internalapi\/asset\//, 'internalapi/asset/');
         }
@@ -105,22 +48,17 @@
         const newURL = rewriteInternalapi(input.url);
         if (newURL !== input.url) input = new Request(newURL, input);
       }
-      return origFetch(input, init).then(res => {
-        if (!res.ok) console.warn('[SASC/alt] fetch failed:', res.status, res.url);
-        return res;
-      });
+      return origFetch(input, init);
     };
-
-    console.log('[SASC/alt] internalapi rewriter installed');
   })();
   </script>
 
-  <!-- Load the GUI bundle you published at repo root -->
-  <script defer src="scratch-gui.js"></script>
+  <!-- Load the same bundle your working index uses -->
+  <script defer src="gui.js"></script>
 
   <style>
     html, body { height: 100%; margin: 0; }
-    body { overflow: hidden; background:#0f0f0f; }
+    body { overflow: hidden; background: #0f0f0f; }
   </style>
 </head>
 <body></body>
