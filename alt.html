@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="google" value="notranslate" />
     <link rel="shortcut icon" href="static/favicon.ico" />
-    <title>Scratch 3.0 GUI — SA SchoolCoding</title>
+    <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
     <!-- Self-host asset rewriter: routes internalapi assets to /cdn-assets/<md5ext> -->
     <script>
@@ -14,24 +14,16 @@
       if (!origFetch) return;
 
       function toLocalAssetURL(u) {
-        // Accept strings or Request objects
         const url = typeof u === 'string' ? u : u.url;
         try {
           const parsed = new URL(url, location.href);
-          // Patterns we want to catch:
-          //   https://assets.scratch.mit.edu/internalapi/asset/<md5ext>/get/
-          //   https://cdn.assets.scratch.mit.edu/internalapi/asset/<md5ext>/get/
-          //   /internalapi/asset/<md5ext>/get/
-          //   internalapi/asset/<md5ext>/get/
           const p = parsed.pathname.replace(/^\//, '');
           if (p.startsWith('internalapi/asset/')) {
             const parts = p.split('/');
-            const md5ext = parts[2]; // .../asset/<md5ext>/get/
+            const md5ext = parts[2];
             if (md5ext && md5ext.includes('.')) {
-              const local = new URL('cdn-assets/' + md5ext, location.origin + location.pathname.replace(/\/[^/]*$/, '/'));
-              // Force absolute to avoid base issues
-              local.pathname = local.pathname.replace(/\/[^/]*$/, '/') + 'cdn-assets/' + md5ext;
-              return local.origin + '/' + (location.pathname.replace(/^\//,'').split('/').slice(0,-1).join('/')) + '/cdn-assets/' + md5ext;
+              const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
+              return base + 'cdn-assets/' + md5ext;
             }
           }
         } catch (_) {}
@@ -39,22 +31,18 @@
       }
 
       window.fetch = function(input, init){
-        // Try to rewrite to local cdn-assets
         const candidate = toLocalAssetURL(input);
         if (candidate) {
-          if (typeof input === 'string') {
-            return origFetch(candidate, init);
-          } else {
-            return origFetch(new Request(candidate, input), init);
-          }
+          if (typeof input === 'string') return origFetch(candidate, init);
+          return origFetch(new Request(candidate, input), init);
         }
         return origFetch(input, init);
       };
     })();
     </script>
 
-    <!-- Your built Scratch GUI bundle -->
-    <script defer src="scratch-gui.js"></script>
+    <!-- Use the alternate bundle if you prefer -->
+    <script defer src="gui.js"></script>
 
     <style>
       html, body { height: 100%; margin: 0; }
