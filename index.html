@@ -1,136 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="google" content="notranslate" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="google" value="notranslate"/>
+  <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
-  <link rel="icon" href="static/favicon.ico" />
+  <!-- SASC v3 -->
 
-  <style>
-    html,body{height:100%;margin:0;background:#fff;}
-    body{overflow:hidden;}
-    /* SASC mini console (bottom-left) */
-    #sasc-console{position:fixed;left:8px;bottom:8px;z-index:99999;
-      background:#111;color:#0f0;padding:8px 10px;border-radius:6px;font:12px/1.35 monospace;max-width:min(50vw,520px);max-height:30vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,.4)}
-    #sasc-console b{color:#7cf}
-  </style>
-
-  <!-- 1) React 16.14 + ReactDOM 16.14 + Redux (UMD) -->
+  <!-- 1) Known-good UMDs (React/DOM must be the same major/minor). -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js" crossorigin></script>
 
-  <!-- 2) Lowercase aliases expected by some UMD chunks -->
-  <script>
-  (function(){
-    window.react     = window.react     || window.React;
-    window['react-dom'] = window['react-dom'] || window.ReactDOM;
-    window.redux     = window.redux     || window.Redux;
-  })();
-  </script>
-
-  <!-- 3) Fetch rewriter: libraries/, static/, chunks/, internalapi/asset/ -->
-  <script>
-  (function(){
-    const log = (...a)=>{ try{ sascLog(...a); }catch(_){ console.log('[SASC]', ...a); } };
-
-    const ORIGIN = location.origin;
-    // Repo base path ensures we never fetch from https://kotzem1977.github.io/<wrong>/
-    const basePath = location.pathname.replace(/\/[^/]*$/, '/'); // keep trailing slash
-    const repoRoot = ORIGIN + basePath; // e.g., https://.../sasc-scratch-editor/
-
-    function toRepoURL(u){
-      const rel = String(u).replace(/^\//,''); // strip leading slash
-      return new URL(rel, repoRoot).toString();
+  <style>
+    html,body{height:100%;margin:0}
+    body{overflow:hidden;background:#0f0f0f}
+    #app{height:100%}
+    /* Tiny console overlay */
+    #sasc-console{
+      position:fixed;left:12px;bottom:12px;z-index:99999;
+      font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color:#eee;background:#111;opacity:.95;border:1px solid #333;border-radius:8px;
+      max-width:50vw;max-height:30vh;overflow:auto;padding:8px 10px;box-shadow:0 6px 16px rgba(0,0,0,.5)
     }
+    #sasc-console b{color:#9ad}
+  </style>
 
-    const origFetch = window.fetch && window.fetch.bind(window);
-    if (!origFetch) return;
+  <!-- 2) Lowercase alias shim (some UMD builds expect window.react / window['react-dom'] / window.redux) -->
+  <script>
+  (function(){
+    function log(){ try{
+      const box = document.getElementById('sasc-console');
+      if (box) box.innerHTML += Array.from(arguments).map(a=>String(a)).join(' ') + '<br/>';
+      // eslint-disable-next-line no-console
+      console.log('[SASC]', ...arguments);
+    }catch(_){}
+    }
+    // Create the overlay ASAP
+    const div = document.createElement('div');
+    div.id = 'sasc-console';
+    div.innerHTML = '<b>[SASC]</b> Console ready<br/>';
+    document.addEventListener('click', e => log('[Click]', e.target.tagName));
+    document.body ? document.body.appendChild(div) : document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(div));
 
-    function rewrite(url){
-      try{
-        const u = new URL(url, location.href);
+    if (window.React && !window.react) { window.react = window.React; log('react alias set'); }
+    if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; log('react-dom alias set'); }
+    if (window.Redux && !window.redux) { window.redux = window.Redux; log('redux alias set'); }
 
-        // Fix double slashes in our own path
-        if (u.pathname.includes('//')) u.pathname = u.pathname.replace(/\/{2,}/g,'/');
+    log('href:', location.href);
+    log('React present:', !!window.react, 'version:', window.react && window.react.version);
+    log('ReactDOM present:', !!window['react-dom']);
+    log('Redux present:', !!window.redux);
 
-        // 1) Libraries JSON (sprites, backdrops, costumes, sounds) → repo root
+    // 3) fetch() rewrite so GUI can run under a subpath + self-host assets
+    (function(){
+      const origFetch = window.fetch && window.fetch.bind(window);
+      if (!origFetch) return;
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/'); // “…/sasc-scratch-editor/”
+      const ownerRepo = basePath.split('/').filter(Boolean); // ["kotzem1977","sasc-scratch-editor"]
+      const repoPath = '/' + ownerRepo.join('/');
+
+      function toLocal(urlStr){
+        // Turn “/x” into “/sasc-scratch-editor/x” and fix double slashes
+        const u = new URL(urlStr, location.origin + basePath);
         if (u.pathname.startsWith('/libraries/')) {
-          return toRepoURL(u.pathname);
+          u.pathname = repoPath + u.pathname;            // serve libraries from repo
+        } else if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/chunks/')) {
+          u.pathname = basePath.replace(/\/$/, '') + u.pathname; // keep under current base path
+        } else if (u.pathname.startsWith('/internalapi/asset/')) {
+          // map /internalapi/asset/<md5ext>/get/  -> /static/assets/<md5ext>
+          const m = u.pathname.match(/^\/internalapi\/asset\/([^/]+)\/get\/?$/);
+          if (m) u.pathname = basePath + 'static/assets/' + m[1];
+        } else if (u.pathname.startsWith('internalapi/asset/')) {
+          const m = u.pathname.match(/^internalapi\/asset\/([^/]+)\/get\/?$/);
+          if (m) u.pathname = basePath + 'static/assets/' + m[1];
         }
-        if (u.pathname.startsWith('libraries/')) {
-          return toRepoURL(u.pathname);
-        }
-
-        // 2) Static/chunks emitted by our build → repo root
-        if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/chunks/')) {
-          return toRepoURL(u.pathname);
-        }
-
-        // 3) Scratch internal asset/project API → our local copies
-        //    /internalapi/asset/<md5ext>/get/  →  static/assets/<md5ext>
-        const mAsset1 = u.pathname.match(/^\/internalapi\/asset\/([a-f0-9]{32}\.\w+)\/get\/?$/i);
-        const mAsset2 = u.pathname.match(/^internalapi\/asset\/([a-f0-9]{32}\.\w+)\/get\/?$/i);
-        const m = mAsset1 || mAsset2;
-        if (m) {
-          const md5ext = m[1];
-          return toRepoURL('static/assets/' + md5ext);
-        }
-
-      }catch(_){}
-      return url;
-    }
-
-    window.fetch = function(input, init){
-      if (typeof input === 'string') {
-        const fixed = rewrite(input);
-        if (fixed !== input) log('rewrote', input, '→', fixed);
-        return origFetch(fixed, init);
-      } else if (input && typeof input.url === 'string') {
-        const fixed = rewrite(input.url);
-        if (fixed !== input.url) {
-          log('rewrote', input.url, '→', fixed);
-          input = new Request(fixed, input);
-        }
-        return origFetch(input, init);
+        // clean any // in the middle (keep protocol)
+        u.pathname = u.pathname.replace(/\/{2,}/g,'/');
+        return u.toString();
       }
-      return origFetch(input, init);
-    };
+
+      window.fetch = function(input, init){
+        try{
+          if (typeof input === 'string') {
+            const fixed = toLocal(input);
+            if (fixed !== input) console.log('[SASC fetch]', input, '→', fixed);
+            return origFetch(fixed, init);
+          } else if (input && typeof input.url === 'string') {
+            const fixed = toLocal(input.url);
+            if (fixed !== input.url) {
+              console.log('[SASC fetch]', input.url, '→', fixed);
+              input = new Request(fixed, input);
+            }
+            return origFetch(input, init);
+          }
+        }catch(e){ console.warn('[SASC fetch] rewrite error', e); }
+        return origFetch(input, init);
+      };
+    })();
   })();
   </script>
 
+  <!-- 4) finally, load the GUI bundle built from scratch-gui -->
+  <script defer src="scratch-gui.js?v=stable"></script>
 </head>
 <body>
-  <!-- SASC mini console -->
-  <div id="sasc-console"></div>
-  <script>
-    (function(){
-      const el=document.getElementById('sasc-console');
-      window.sascLog=function(...a){
-        const line=document.createElement('div');
-        line.textContent=a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');
-        el.appendChild(line);
-        el.scrollTop=el.scrollHeight;
-      };
-      sascLog('Console ready');
-      sascLog('href:', location.href);
-      sascLog('React:', !!window.React, 'v', window.React && React.version);
-      sascLog('Redux:', !!window.Redux);
-    })();
-    // Click tracer
-    document.addEventListener('click',e=>{
-      try{ sascLog('[click]', e.target.tagName); }catch(_){}
-    }, true);
-  </script>
-
-  <!-- GUI host element (some builds mount themselves; if not, we can mount manually later) -->
-  <div id="app" style="height:100%;"></div>
-
-  <!-- 4) Load our bundled GUI (UMD). The fetch hook + aliases are already active. -->
-  <script src="scratch-gui.js?v=boot-stable"></script>
-  <script>
-    sascLog('GUI script requested');
-  </script>
+  <div id="app"></div>
 </body>
 </html>
