@@ -1,53 +1,40 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Scratch GUI (alt mount) — SA SchoolCoding</title>
-    <link rel="icon" href="static/favicon.ico">
-    <style>
-      html,body,#app{height:100%;margin:0}
-      body{background:#0f0f0f}
-    </style>
-  </head>
-  <body>
-    <!-- IMPORTANT: stock Scratch GUI expects a root element -->
-    <div id="app"></div>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="google" value="notranslate" />
+    <link rel="shortcut icon" href="static/favicon.ico" />
+    <title>Scratch 3.0 GUI (alt mount) — SA SchoolCoding</title>
 
-    <!-- Try the canonical bundle name first -->
-    <script defer src="gui.js"></script>
-
-
-    <!-- Fallback: if your build emitted gui.js instead, uncomment this and comment the line above -->
-    <!-- <script defer src="gui.js"></script> -->
-
-    <!-- Minimal autosave/restore that doesn’t require window.vm -->
+    <!-- Fix for GitHub Pages subpath -->
     <script>
     (function(){
-      const KEY="sasc_autosave";
-      window.addEventListener('load',()=>{
-        // restore if the page's GUI exposes vm after hydration
-        setTimeout(()=>{
-          try{
-            // Many builds expose vm on a React prop deep in GUI;
-            // if not available we just skip silently.
-            const anyWin = window;
-            const maybeVM =
-              anyWin.vm ||
-              anyWin.__vm ||
-              (anyWin.gui && anyWin.gui.vm) ||
-              null;
-            if (maybeVM && typeof maybeVM.loadProject==='function'){
-              const saved = localStorage.getItem(KEY);
-              if (saved) maybeVM.loadProject(saved);
-              setInterval(()=>{
-                try{ localStorage.setItem(KEY, maybeVM.toJSON()); }catch(_){}
-              },10000);
-            }
-          }catch(_){}
-        },1200);
-      });
+      const origFetch = window.fetch;
+      if (!origFetch) return;
+      const basePath = (location.pathname.replace(/\/[^/]*$/, '/')); 
+      const PREFIXES = ['/libraries/', '/static/', '/chunks/'];
+      function needsRewrite(u) {
+        return typeof u === 'string' && PREFIXES.some(p => u.startsWith(p));
+      }
+      function toProjectURL(u) {
+        const rel = u.replace(/^\//, '');
+        return new URL(rel, location.origin + basePath).toString();
+      }
+      window.fetch = function(u, opts){
+        const fixed = needsRewrite(u) ? toProjectURL(u) : u;
+        return origFetch.call(this, fixed, opts);
+      };
     })();
     </script>
-  </body>
+
+    <!-- Alt bundle (swap to gui.js if you don’t have scratch-gui.js) -->
+    <script defer src="scratch-gui.js"></script>
+
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { overflow: hidden; background: #0f0f0f; }
+    </style>
+  </head>
+  <body></body>
 </html>
