@@ -2,117 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (v7)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SASC Scratch Editor — alt (v8)</title>
+  <style>html,body,#app{height:100%;margin:0}#app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+  #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
+  color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+  #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+  #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
+  #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}</style>
+</head>
+<body>
+  <div id="app"></div>
 
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+  <script>
+    (function(){
+      if (window.React && !window.react) window.react = window.React;
+      if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM;
+      if (window.Redux && !window.redux) window.redux = window.Redux;
+    })();
+  </script>
 
-  <style>
-    html,body,#root{height:100%;margin:0}
-    #root{display:flex}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;height:190px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;font:12px/1.35 monospace;border:1px solid #333;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
-    #sasc-console header{padding:6px 8px;background:#111;color:#9cf;display:flex;gap:.5rem;align-items:center}
-    #sasc-console pre{flex:1;margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto}
-    #sasc-console button{all:unset;cursor:pointer;color:#9cf;border:1px solid #345;padding:2px 6px;border-radius:4px}
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-
-  <div id="sasc-console" aria-live="polite">
-    <header><strong>SASC</strong> <button id="sasc-clear">clear</button> <button id="sasc-dump">dump win keys</button></header>
-    <pre></pre>
-  </div>
+  <div id="sasc-console"><header><strong>SASC</strong><div>
+    <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button></div></header><pre>SASC clear
+</pre></div>
+  <script>
+    (function(){const pre=document.querySelector('#sasc-console pre');window.__sascLog=(m)=>{try{pre.textContent+=m+'\n';pre.scrollTop=pre.scrollHeight}catch(_){}console.log(m)};
+      window.addEventListener('click',e=>__sascLog('[Click] '+e.target.tagName));
+      window.addEventListener('unhandledrejection',e=>__sascLog('[unhandledrejection]: '+(e.reason&&(e.reason.stack||e.reason))));
+    })();
+  </script>
 
   <script>
-    (function bootstrap(){
-      const pre = document.querySelector('#sasc-console pre');
-      const log = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.log(...a); };
-      const logErr = (...a)=>{ try{ pre.textContent += a.join(' ')+'\n'; pre.scrollTop = pre.scrollHeight; }catch{}; console.error(...a); };
-      document.getElementById('sasc-clear').onclick = ()=>{ pre.textContent=''; };
-      document.getElementById('sasc-dump').onclick = ()=>{ log('window keys:', Object.keys(window).sort().slice(0,200).join(', ')); };
-
-      if (window.React && !window.react) window.react = window.React, log('react alias set');
-      if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM, log('react-dom alias set');
-      if (window.Redux && !window.redux) window.redux = window.Redux, log('redux alias set');
-
-      log('href:', location.href);
-      log('React present:', !!window.React, 'version:', window.React && window.React.version);
-      log('ReactDOM present:', !!window.ReactDOM);
-      log('Redux present:', !!window.Redux);
-
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
-      const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2);
-      const repoRoot = '/' + ownerRepo.join('/');
-      const withRepo = p => (repoRoot + '/' + p.replace(/^\/+/, '')).replace(/\/{2,}/g, '/');
-
-      function localAssetURLForInternalAPI(url) {
-        try {
-          const u = new URL(url, location.href);
-          const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
-          if (m) return withRepo('static/assets/' + m[1]);
-        } catch {}
-        return null;
-      }
-
-      (function installFetch(){
-        if (window.__sascFetchHookInstalled) return;
-        window.__sascFetchHookInstalled = true;
-        const ofetch = window.fetch.bind(window);
-        window.fetch = async function(input, init){
-          const origURL = (typeof input === 'string') ? input : (input && input.url);
-          const localAsset = localAssetURLForInternalAPI(origURL || '');
-          if (localAsset) {
-            const mm = (origURL||'').match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get/i);
-            if (mm) log('[ASSET REQUEST]', mm[1], '←', origURL);
-            try {
-              const r = await ofetch(localAsset, init);
-              if (r && r.ok) return r;
-            } catch(e){}
-            return ofetch(origURL, init);
-          }
-          return ofetch(input, init);
-        };
-        log('[fetch hook] installed (libraries untouched, assets local-first)');
-      })();
-
-      (function installXHR(){
-        if (window.__sascXHRHookInstalled) return;
-        window.__sascXHRHookInstalled = true;
-        const oopen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url){
-          const localAsset = localAssetURLForInternalAPI(url);
-          return oopen.apply(this, [method, localAsset || url]);
-        };
-        log('[xhr hook] installed (assets local-first)');
-      })();
-
-      window.addEventListener('unhandledrejection', ev => {
-        logErr('[unhandledrejection]:', ev.reason && (ev.reason.stack || ev.reason.toString()));
-      });
-
-      const s = document.createElement('script');
-      s.src = 'scratch-gui.js?v=stable-boot-v7_' + Date.now();
-      s.defer = true;
-      s.onload = () => {
-        log('GUI script loaded');
-        try {
-          const GUI = (window.GUI && window.GUI.default) || window.GUI;
-          const AppStateHOC = window.GUI && window.GUI.AppStateHOC;
-          if (!GUI || !AppStateHOC) throw new Error('Could not find GUI or AppStateHOC');
-          const Root = AppStateHOC(GUI);
-          const rootEl = document.getElementById('root');
-          rootEl.setAttribute('aria-hidden','false');
-          window.ReactDOM.render(window.React.createElement(Root, {}), rootEl);
-          log('Mounted via GUI.AppStateHOC(GUI)');
-        } catch (e) {
-          logErr('Mount failed:', e && (e.stack || e.toString()));
-        }
+    (function(){
+      const base = location.pathname.replace(/\/[^/]*$/, '/'); const repoRoot=base.replace(/\/$/,'');
+      const toLocal = u => {
+        const m = u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
+        return m ? repoRoot + '/static/assets/' + m[1] : null;
       };
-      s.onerror = () => logErr('Failed to load scratch-gui.js');
-      document.head.appendChild(s);
+      const f = window.fetch;
+      window.fetch = async function(i,init){const url=(typeof i==='string')?i:(i&&i.url);const local=url&&toLocal(url);
+        if(local){__sascLog('[fetch] local-first: '+local+' (← '+url+')');const r=await f(local,init).catch(()=>null);if(r&&r.ok)return r;}
+        return f.apply(this,arguments);
+      };
+      const XO = XMLHttpRequest;
+      window.XMLHttpRequest = function(){const x=new XO();const op=x.open;x.open=function(m,u){const local=typeof u==='string'?toLocal(u):null;
+        if(local){__sascLog('[xhr] local-first: '+local+' (← '+u+')');return op.call(x,m,local);}return op.apply(x,arguments);};return x;};
+      __sascLog('[fetch/xhr hooks] installed');
+    })();
+  </script>
+
+  <script src="scratch-gui.js?v=stable-boot-v8-alt"></script>
+  <script>
+    (function(){
+      try{
+        const app=document.getElementById('app');
+        if (window.GUI && typeof window.GUI.setAppElement === 'function') window.GUI.setAppElement(app);
+        const GUI=window.GUI;
+        let Wrapped = GUI.default || GUI.GUI || GUI;
+        Wrapped = GUI.AppStateHOC(Wrapped);
+        Wrapped = GUI.ProjectLoaderHOC ? GUI.ProjectLoaderHOC(Wrapped) : Wrapped;
+        Wrapped = GUI.HashParserHOC ? GUI.HashParserHOC(Wrapped) : Wrapped;
+        const el = window.React.createElement(Wrapped, {isPlayerOnly:false,isFullScreen:false,canUseCloud:false});
+        window.ReactDOM.render(el, app);
+        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI)))');
+      }catch(e){__sascLog('BOOT ERROR: '+(e.stack||e));console.error(e);}
     })();
   </script>
 </body>
