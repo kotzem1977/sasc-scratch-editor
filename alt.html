@@ -7,19 +7,28 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- React 16.14 UMD -->
+  <!-- React/DOM UMD -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-is@16.13.1/umd/react-is.production.min.js" crossorigin></script>
 
   <script>
     window.global = window;
     window.process = window.process || { env: { NODE_ENV: 'production' } };
-    if (!window.React || !window.React.forwardRef) {
-      console.error('[Bootstrap] React missing or too old. React=', window.React);
+
+    // Lowercase aliases for UMD externals
+    (function aliasUMDGlobals(){
+      if (window.React)       window.react = window.React;
+      if (window.ReactDOM)    window['react-dom'] = window.ReactDOM;
+      if (window.ReactIs)     window['react-is']  = window.ReactIs;
+    })();
+
+    if (!window.react || !window.react.forwardRef) {
+      console.error('[Bootstrap] React global missing or wrong: window.react=', window.react);
     }
   </script>
 
-  <!-- Asset rewrite to local static/assets/<md5ext> -->
+  <!-- Local asset rewrite -->
   <script>
   (function () {
     const origFetch = window.fetch && window.fetch.bind(window);
@@ -65,7 +74,7 @@
     (function(){
       var s = document.createElement('script');
       s.defer = true;
-      s.src = 'scratch-gui.js?v=react16';
+      s.src = 'scratch-gui.js?v=umd-aliases';
       s.onerror = function(e){ console.error('[Bootstrap] Failed to load scratch-gui.js', e); };
       document.head.appendChild(s);
     })();
