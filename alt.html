@@ -7,16 +7,12 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- UMD aliases to avoid forwardRef black screen -->
-  <script>
-  (function(){
-    if (window.react && !window.React)      window.React = window.react;
-    if (window.reactDom && !window.ReactDOM) window.ReactDOM = window.reactDom;
-    if (window.redux && !window.Redux) window.Redux = window.redux;
-  })();
-  </script>
+  <!-- Provide React/ReactDOM/Redux globals BEFORE the GUI bundle -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
 
-  <!-- Subpath + asset rewrite shim (same as index) -->
+  <!-- Subpath + asset rewrite shim -->
   <script>
   (function(){
     const origFetch = window.fetch && window.fetch.bind(window);
@@ -44,9 +40,7 @@
         const m2 = u.pathname.match(INT_ASSET);
         if (m2 && m2[1]) u.href = LOCAL_ASSETS + m2[1];
         return u.toString();
-      } catch {
-        return urlLike;
-      }
+      } catch { return urlLike; }
     }
 
     window.fetch = function(input, init){
@@ -65,10 +59,10 @@
       return origFetch(input, init);
     };
 
-    const origImage = window.Image;
-    if (origImage) {
+    const OrigImage = window.Image;
+    if (OrigImage) {
       window.Image = function(w,h){
-        const img = new origImage(w,h);
+        const img = new OrigImage(w,h);
         let _src = '';
         Object.defineProperty(img, 'src', {
           get(){ return _src; },
@@ -90,7 +84,7 @@
   })();
   </script>
 
-  <script defer src="scratch-gui.js?v=stable-alt"></script>
+  <script defer src="scratch-gui.js?v=react16-alt"></script>
 
   <style>
     html, body { height:100%; margin:0; }
