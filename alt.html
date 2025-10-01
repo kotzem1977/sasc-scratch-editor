@@ -7,86 +7,125 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-    <!-- React globals required by scratch-gui.js -->
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin></script>
-
-    <!-- One combined fetch shim: subpath-safe libs + local-first md5ext assets -->
     <script>
-    (function(){
-      if (!window.fetch) return;
-      const origFetch = window.fetch.bind(window);
-
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
-      const ABS_BASE = new URL(basePath, location.origin).toString();
-      const LOCAL_ASSET_PREFIX = new URL('./static/assets/', ABS_BASE).toString();
-
-      const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
-      const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
-
-      function urlOf(input){
-        try {
-          return (typeof input === 'string')
-            ? new URL(input, location.href)
-            : (input && typeof input.url === 'string' ? new URL(input.url, location.href) : null);
-        } catch { return null; }
-      }
-      function isLibJson(u){ return !!(u && LIB_JSON.test(u.pathname)); }
-      function needsSubpathRewrite(u){ return !!(u && SUBPATH_PREFIXES.some(p => u.pathname.startsWith(p))); }
-      function toProjectURL(u){
-        const rel = u.pathname.replace(/^\//, '') + (u.search || '') + (u.hash || '');
-        return new URL(rel, ABS_BASE).toString();
-      }
-      function extractMd5ext(u){
-        if (!u) return null;
-        let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
-        if (m) return m[1];
-        m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
-        if (m && (u.pathname.includes('/static/assets/'))) return m[1];
-        return null;
-      }
-      function localAssetURL(md5ext){
-        return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
-      }
-      async function tryLocalThenRemote(init, md5ext){
-        const local = localAssetURL(md5ext);
-        if (local) {
-          const r = await origFetch(local, init);
-          if (r.ok) return r;
+      (function(){
+        function bubble(msg){
+          const d=document.createElement('div');
+          d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
+          d.textContent='[Bootstrap] '+msg;
+          document.documentElement.appendChild(d);
         }
-        const remote = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
-        return origFetch(remote, init);
-      }
-
-      window.fetch = async function(input, init){
-        const u = urlOf(input);
-        if (isLibJson(u)) {
-          const libURL = toProjectURL(u);
-          if (typeof input === 'string') return origFetch(libURL, init);
-          return origFetch(new Request(libURL, input), init);
-        }
-        if (needsSubpathRewrite(u)) {
-          const projURL = toProjectURL(u);
-          if (typeof input === 'string') return origFetch(projURL, init);
-          return origFetch(new Request(projURL, input), init);
-        }
-        const md5ext = extractMd5ext(u);
-        if (md5ext) return tryLocalThenRemote(init, md5ext);
-        return origFetch(input, init);
-      };
-
-      function showErr(msg){
-        const d = document.createElement('div');
-        d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
-        d.textContent='[Bootstrap] '+msg;
-        document.documentElement.appendChild(d);
-      }
-      window.addEventListener('error', e => showErr(e.message || 'script error'));
-      window.addEventListener('unhandledrejection', e => showErr((e.reason && (e.reason.message || String(e.reason))) || 'promise rejection'));
-    })();
+        window.addEventListener('error', e => bubble(e.message||'script error'));
+        window.addEventListener('unhandledrejection', e => bubble((e.reason && (e.reason.message||String(e.reason))) || 'promise rejection'));
+        window.__bubbleError = bubble;
+      })();
     </script>
 
-    <script defer src="scratch-gui.js"></script>
+    <script>
+      (function(){
+        if (!window.fetch) return;
+        const origFetch = window.fetch.bind(window);
+
+        const basePath = location.pathname.replace(/\/[^/]*$/, '/');
+        const ABS_BASE = new URL(basePath, location.origin).toString();
+        const LOCAL_ASSET_PREFIX = new URL('./static/assets/', ABS_BASE).toString();
+
+        const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
+        const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+
+        function urlOf(input){
+          try{
+            return (typeof input==='string')
+              ? new URL(input, location.href)
+              : (input && typeof input.url==='string' ? new URL(input.url, location.href) : null);
+          }catch{ return null; }
+        }
+        function isLibJson(u){ return !!(u && LIB_JSON.test(u.pathname)); }
+        function needsSubpathRewrite(u){ return !!(u && SUBPATH_PREFIXES.some(p => u.pathname.startsWith(p))); }
+        function toProjectURL(u){
+          const rel = u.pathname.replace(/^\//,'') + (u.search||'') + (u.hash||'');
+          return new URL(rel, ABS_BASE).toString();
+        }
+        function extractMd5ext(u){
+          if (!u) return null;
+          let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
+          if (m) return m[1];
+          m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
+          if (m && u.pathname.includes('/static/assets/')) return m[1];
+          return null;
+        }
+        function localAssetURL(md5ext){
+          return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
+        }
+        async function tryLocalThenRemote(init, md5ext){
+          const local = localAssetURL(md5ext);
+          if (local) {
+            const r = await origFetch(local, init);
+            if (r.ok) return r;
+          }
+          const remote = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
+          return origFetch(remote, init);
+        }
+
+        window.fetch = async function(input, init){
+          const u = urlOf(input);
+          if (isLibJson(u)) {
+            const libURL = toProjectURL(u);
+            return (typeof input==='string') ? origFetch(libURL, init)
+                                             : origFetch(new Request(libURL, input), init);
+          }
+          if (needsSubpathRewrite(u)) {
+            const projURL = toProjectURL(u);
+            return (typeof input==='string') ? origFetch(projURL, init)
+                                             : origFetch(new Request(projURL, input), init);
+          }
+          const md5ext = extractMd5ext(u);
+          if (md5ext) return tryLocalThenRemote(init, md5ext);
+          return origFetch(input, init);
+        };
+      })();
+    </script>
+
+    <script>
+      (function loadReactThenBundle(){
+        const reactCDNs = [
+          'https://cdn.jsdelivr.net/npm/react@17/umd/react.production.min.js',
+          'https://unpkg.com/react@17/umd/react.production.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js'
+        ];
+        const domCDNs = [
+          'https://cdn.jsdelivr.net/npm/react-dom@17/umd/react-dom.production.min.js',
+          'https://unpkg.com/react-dom@17/umd/react-dom.production.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js'
+        ];
+
+        function add(src, cb){
+          const s=document.createElement('script');
+          s.src=src; s.crossOrigin='anonymous';
+          s.onload=cb; s.onerror=cb;
+          document.head.appendChild(s);
+        }
+        function ensureGlobal(name, cdns, done){
+          let i=0;
+          (function tryNext(){
+            if (window[name]) return done();
+            if (i>=cdns.length) return done(new Error(name+' failed to load'));
+            add(cdns[i++], () => setTimeout(tryNext, 0));
+          })();
+        }
+        ensureGlobal('React', reactCDNs, function(err1){
+          if (err1) { console.error(err1); window.__bubbleError('React failed to load'); return; }
+          ensureGlobal('ReactDOM', domCDNs, function(err2){
+            if (err2) { console.error(err2); window.__bubbleError('ReactDOM failed to load'); return; }
+            const s=document.createElement('script');
+            s.defer=true;
+            s.src='scratch-gui.js';
+            s.onerror=()=>window.__bubbleError('scratch-gui.js failed to load');
+            document.head.appendChild(s);
+          });
+        });
+      })();
+    </script>
 
     <style>
       html, body { height: 100%; margin: 0; }
