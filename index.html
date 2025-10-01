@@ -7,106 +7,36 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-    <!-- Main editor bundle -->
-    <script defer src="gui.js"></script>
-
-    <!-- SASC: Auto-detect + RETRY setting Scratch asset/project hosts; detailed logs -->
+    <!-- Fix for GitHub Pages subpath -->
     <script>
     (function(){
-      const HOSTS = ['https://assets.scratch.mit.edu','https://cdn.assets.scratch.mit.edu'];
-      const PROJ_HOST = 'https://projects.scratch.mit.edu';
-      const PROBE_MD5 = '3826a4091a33e4d26f87a2fac7cf796b.svg'; // Apple
+      const origFetch = window.fetch;
+      if (!origFetch) return;
 
-      async function probe(url){
-        try {
-          const r = await fetch(url, {mode:'cors', cache:'no-cache'});
-          console.log('[SASC] probe', r.status, url);
-          return r.ok;
-        } catch (e) {
-          console.warn('[SASC] probe error', url, e);
-          return false;
-        }
+      // e.g. /sasc-scratch-editor/index.html -> /sasc-scratch-editor/
+      const basePath = (location.pathname.replace(/\/[^/]*$/, '/')); 
+
+      // Only rewrite these root-relative prefixes
+      const PREFIXES = ['/libraries/', '/static/', '/chunks/'];
+
+      function needsRewrite(u) {
+        return typeof u === 'string' && PREFIXES.some(p => u.startsWith(p));
       }
-      async function pickAssetHost(){
-        for (const h of HOSTS){
-          const ok = await probe(`${h}/internalapi/asset/${PROBE_MD5}/get/`);
-          if (ok) return h;
-        }
-        return null;
+
+      function toProjectURL(u) {
+        const rel = u.replace(/^\//, '');
+        return new URL(rel, location.origin + basePath).toString();
       }
-      function trySetHosts(assetHost){
-        try{
-          const st = window.vm?.runtime?.storage;
-          if (!st) return false;
-          st.setAssetHost?.(assetHost);
-          st.setProjectHost?.(PROJ_HOST);
-          st.assetHost   = assetHost;
-          st.projectHost = PROJ_HOST;
-          console.log('[SASC] SET hosts → assetHost =', st.assetHost, 'projectHost =', st.projectHost);
-          return true;
-        }catch(e){
-          console.warn('[SASC] setHosts error', e);
-          return false;
-        }
-      }
-      async function boot(){
-        const assetHost = await pickAssetHost();
-        if (!assetHost){
-          console.error('[SASC] No working asset host detected');
-          return;
-        }
-        let attempts = 0;
-        const timer = setInterval(() => {
-          attempts++;
-          const ok = trySetHosts(assetHost);
-          console.log('[SASC] attempt', attempts, 'storage ready =', ok);
-          if (ok || attempts >= 20) clearInterval(timer);
-        }, 250);
-        // one late pass just in case
-        setTimeout(() => trySetHosts(assetHost), 2000);
-      }
-      window.addEventListener('load', boot);
+
+      window.fetch = function(u, opts){
+        const fixed = needsRewrite(u) ? toProjectURL(u) : u;
+        return origFetch.call(this, fixed, opts);
+      };
     })();
     </script>
 
-    <!-- SASC: Autosave/restore bridge (localStorage) -->
-    <script>
-    (function () {
-      const KEY = "sasc_autosave";
-      const SAVE_MS = 10000;
-      function getVM() {
-        try { return window.vm && typeof window.vm.toJSON === "function" ? window.vm : null; }
-        catch (_) { return null; }
-      }
-      function tryRestore() {
-        try {
-          const vm = getVM(); if (!vm) return false;
-          const saved = localStorage.getItem(KEY);
-          if (saved) vm.loadProject(saved);
-          return true;
-        } catch (_) { return false; }
-      }
-      function startAutoSave() {
-        try {
-          const vm = getVM(); if (!vm) return false;
-          if (window.__sascSaver) return true;
-          window.__sascSaver = setInterval(() => {
-            try {
-              const v = getVM(); if (!v) return;
-              const json = v.toJSON();
-              localStorage.setItem(KEY, json);
-            } catch (_) {}
-          }, SAVE_MS);
-          return true;
-        } catch (_) { return false; }
-      }
-      function tick() {
-        if (tryRestore() & startAutoSave()) return;
-        setTimeout(tick, 500);
-      }
-      window.addEventListener("load", tick);
-    })();
-    </script>
+    <!-- Main editor bundle -->
+    <script defer src="gui.js"></script>
 
     <style>
       html, body { height: 100%; margin: 0; }
