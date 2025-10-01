@@ -7,24 +7,27 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- React globals -->
-  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <!-- React 16.14 UMD -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
 
-  <!-- Node-ish shims -->
   <script>
     window.global = window;
     window.process = window.process || { env: { NODE_ENV: 'production' } };
+    if (!window.React || !window.React.forwardRef) {
+      console.error('[Bootstrap] React missing or too old. React=', window.React);
+    }
   </script>
 
-  <!-- Strict asset rewrite to local static/assets/<md5ext> -->
+  <!-- Asset rewrite to local static/assets/<md5ext> -->
   <script>
   (function () {
     const origFetch = window.fetch && window.fetch.bind(window);
     if (!origFetch) return;
 
     const INTERNAL_ASSET_RE = /\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i;
-    const isScratchAssetHost = h => (h === 'assets.scratch.mit.edu' || h === 'cdn.assets.scratch.mit.edu');
+    const isScratchAssetHost =
+      h => (h === 'assets.scratch.mit.edu' || h === 'cdn.assets.scratch.mit.edu');
 
     function toLocalAssetURL(md5ext) {
       const basePath = location.pathname.replace(/\/[^/]*$/, '/');
@@ -58,7 +61,15 @@
   })();
   </script>
 
-  <script defer src="scratch-gui.js"></script>
+  <script>
+    (function(){
+      var s = document.createElement('script');
+      s.defer = true;
+      s.src = 'scratch-gui.js?v=react16';
+      s.onerror = function(e){ console.error('[Bootstrap] Failed to load scratch-gui.js', e); };
+      document.head.appendChild(s);
+    })();
+  </script>
 
   <style>
     html,body {height:100%;margin:0}
