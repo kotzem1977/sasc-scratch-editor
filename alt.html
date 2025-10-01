@@ -5,30 +5,47 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="google" value="notranslate" />
     <link rel="shortcut icon" href="static/favicon.ico" />
-    <title>Scratch 3.0 GUI (alt mount) — SA SchoolCoding</title>
+    <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-    <!-- Fix for GitHub Pages subpath -->
+    <!-- Subpath + library fetch fixer -->
     <script>
     (function(){
       const origFetch = window.fetch;
       if (!origFetch) return;
-      const basePath = (location.pathname.replace(/\/[^/]*$/, '/')); 
-      const PREFIXES = ['/libraries/', '/static/', '/chunks/'];
-      function needsRewrite(u) {
-        return typeof u === 'string' && PREFIXES.some(p => u.startsWith(p));
+
+      const OWNER  = 'kotzem1977';
+      const REPO   = 'sasc-scratch-editor';
+      const BRANCH = 'main';
+
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
+      const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
+      const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+
+      function needsSubpathRewrite(u) {
+        return typeof u === 'string' && SUBPATH_PREFIXES.some(p => u.startsWith(p));
       }
       function toProjectURL(u) {
         const rel = u.replace(/^\//, '');
         return new URL(rel, location.origin + basePath).toString();
       }
+      function maybeLibraryRawURL(u) {
+        if (typeof u !== 'string') return null;
+        const m = u.match(LIB_JSON);
+        if (!m) return null;
+        const file = m[0].replace(/^\//, '');
+        return `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${file}`;
+      }
+
       window.fetch = function(u, opts){
-        const fixed = needsRewrite(u) ? toProjectURL(u) : u;
-        return origFetch.call(this, fixed, opts);
+        const rawLib = maybeLibraryRawURL(u);
+        if (rawLib) return origFetch.call(this, rawLib, opts);
+        if (needsSubpathRewrite(u)) return origFetch.call(this, toProjectURL(u), opts);
+        return origFetch.call(this, u, opts);
       };
     })();
     </script>
 
-    <!-- Alt bundle (swap to gui.js if you don’t have scratch-gui.js) -->
+    <!-- Alt bundle (switch to gui.js if needed) -->
     <script defer src="scratch-gui.js"></script>
 
     <style>
