@@ -3,147 +3,148 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (v9)</title>
-  <style>
-    html,body,#app{height:100%;margin:0}
-    #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
-      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
-    #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
-    #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
-  </style>
+  <title>SASC Scratch Editor — alt (v8)</title>
+  <style>html,body,#app{height:100%;margin:0}#app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+  #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
+  color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+  #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+  #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
+  #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}</style>
 </head>
 <body>
-  <div id="app"></div>
-
-  <div id="sasc-console">
-    <header>
-      <strong>SASC</strong>
-      <div>
-        <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button>
-      </div>
-    </header>
-    <pre>SASC clear
-</pre>
-  </div>
-
-  <script>
-    window.__sascLog=function(m){try{const z=document.querySelector('#sasc-console pre'); if(z) z.textContent+=m+'\n';}catch(_){} console.log('[SASC]',m);};
-    __sascLog('overlay ready');
-  </script>
-
-  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <div id="app"></div>  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
   <script>
     (function(){
-      if(window.React&&!window.react){window.react=window.React;__sascLog('react alias set');}
-      if(window.ReactDOM&&!window['react-dom']){window['react-dom']=window.ReactDOM;__sascLog('react-dom alias set');}
-      if(window.Redux&&!window.redux){window.redux=window.Redux;__sascLog('redux alias set');}
-      __sascLog('href: '+location.href);
-      __sascLog('React present: '+!!window.React+' version: '+(window.React&&window.React.version));
-      __sascLog('ReactDOM present: '+!!window.ReactDOM);
-      __sascLog('Redux present: '+!!window.Redux);
+      if (window.React && !window.react) window.react = window.React;
+      if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM;
+      if (window.Redux && !window.redux) window.redux = window.Redux;
+    })();
+  </script>  <div id="sasc-console"><header><strong>SASC</strong><div>
+    <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button></div></header><pre>SASC clear
+</pre></div>
+  <script>
+    (function(){const pre=document.querySelector('#sasc-console pre');window.__sascLog=(m)=>{try{pre.textContent+=m+'\n';pre.scrollTop=pre.scrollHeight}catch(_){}console.log(m)};
+      window.addEventListener('click',e=>__sascLog('[Click] '+e.target.tagName));
+      window.addEventListener('unhandledrejection',e=>__sascLog('[unhandledrejection]: '+(e.reason&&(e.reason.stack||e.reason))));
+    })();
+  </script>  <script>
+    (function(){
+      const base = location.pathname.replace(/\/[^/]*$/, '/'); const repoRoot=base.replace(/\/$/,'');
+      const toLocal = u => {
+        const m = u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
+        return m ? repoRoot + '/static/assets/' + m[1] : null;
+      };
+      const f = window.fetch;
+      window.fetch = async function(i,init){const url=(typeof i==='string')?i:(i&&i.url);const local=url&&toLocal(url);
+        if(local){__sascLog('[fetch] local-first: '+local+' (← '+url+')');const r=await f(local,init).catch(()=>null);if(r&&r.ok)return r;}
+        return f.apply(this,arguments);
+      };
+      const XO = XMLHttpRequest;
+      window.XMLHttpRequest = function(){const x=new XO();const op=x.open;x.open=function(m,u){const local=typeof u==='string'?toLocal(u):null;
+        if(local){__sascLog('[xhr] local-first: '+local+' (← '+u+')');return op.call(x,m,local);}return op.apply(x,arguments);};return x;};
+      __sascLog('[fetch/xhr hooks] installed');
+    })();
+  </script>  <script src="scratch-gui.js?v=stable-boot-v8-alt"></script>
+  <script>
+    (function(){
+      try{
+        const app=document.getElementById('app');
+        if (window.GUI && typeof window.GUI.setAppElement === 'function') window.GUI.setAppElement(app);
+        const GUI=window.GUI;
+        let Wrapped = GUI.default || GUI.GUI || GUI;
+        Wrapped = GUI.AppStateHOC(Wrapped);
+        Wrapped = GUI.ProjectLoaderHOC ? GUI.ProjectLoaderHOC(Wrapped) : Wrapped;
+        Wrapped = GUI.HashParserHOC ? GUI.HashParserHOC(Wrapped) : Wrapped;
+        const el = window.React.createElement(Wrapped, {isPlayerOnly:false,isFullScreen:false,canUseCloud:false});
+        window.ReactDOM.render(el, app);
+        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI)))');
+      }catch(e){__sascLog('BOOT ERROR: '+(e.stack||e));console.error(e);}
     })();
   </script>
+<script>
+/* --- SASC PRELOAD APPLE+SKY (idempotent) --- */
+(function preloadAppleSky(){
+  // You can set these dynamically at runtime via window.SASC_ASSETS too.
+  // Fill with your real md5.exts when you have them.
+  var DEFAULTS = {
+    APPLE_SPRITE3: 'REPLACE_APPLE.sprite3', // e.g. 3826a4091a33e4d26f87a2fac7cf796b.sprite3
+    SKY_PNG:       'REPLACE_SKY.png'        // e.g. b6c96d...something....png
+  };
 
-  <!-- Asset hook -->
-  <script>
-  (function installSascAssetHook(){
-    if (window.__sascFetchHookInstalled) return;
-    window.__sascFetchHookInstalled = true;
-    const log = (m)=>{ try{const p=document.querySelector('#sasc-console pre'); if(p) p.textContent += m+'\n';}catch(_){} console.log('[SASC]', m); };
+  var cfg = Object.assign({}, DEFAULTS, (window.SASC_ASSETS||{}));
 
-    function rewriteAssetURL(urlStr){
-      try{
-        const u = new URL(urlStr, location.href);
-        const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?$/i);
-        if (!m) return [urlStr];
-        const md5ext = m[1];
-        const base = location.pathname.replace(/\/[^/]*$/, '/');
-        const local = base.replace(/\/$/, '') + '/static/assets/' + md5ext;
-        const primary = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-        const secondary = 'https://cdn.assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-        return [local, primary, secondary];
-      }catch(_){ return [urlStr]; }
-    }
-
-    async function tryFetchChain(original, init){
-      const chain = rewriteAssetURL(original);
-      const m = String(original).match(/internalapi\/asset\/([^/]+)\/get/);
-      const md5ext = m && m[1];
-      if (md5ext) log('[ASSET REQUEST] ' + md5ext + ' ← ' + original);
-
-      for (let i=0;i<chain.length;i++){
-        const u = chain[i];
-        try{
-          const r = await window.__sasc_ofetch(u, init);
-          if (r && r.ok) { if (i>0) log('[ASSET FALLBACK OK] ' + u); return r; }
-          log('[ASSET NOT OK '+(r && r.status)+'] ' + u);
-        }catch(e){ log('[ASSET ERROR] ' + u + ' :: ' + e); }
+  function whenVMReady(cb, timeoutMs){
+    timeoutMs = timeoutMs || 15000;
+    var t0 = Date.now();
+    var tm = setInterval(function(){
+      var GUI = window.GUI;
+      var vm  = window.vm || (GUI </body></body> GUI.vm);
+      if (vm </body></body> vm.runtime </body></body> vm.runtime.targets </body></body> vm.runtime.targets.length){
+        clearInterval(tm); cb(vm); return;
       }
-      return window.__sasc_ofetch(original, init);
+      if (Date.now() - t0 > timeoutMs) clearInterval(tm);
+    }, 200);
+  }
+
+  function assetURL(md5ext){
+    // Leverage your local-first hooks by pointing at /static/assets first
+    var base = location.pathname.replace(//[^/]*$/, '/');
+    return base.replace(//$/, '') + '/static/assets/' + md5ext;
+  }
+
+  async function addSpriteFromURL(url){
+    var r = await fetch(url);
+    if (!r.ok) throw new Error('sprite fetch ' + r.status);
+    var ab = await r.arrayBuffer();
+
+    var GUI = window.GUI;
+    if (GUI </body></body> GUI.handleSpriteUpload </body></body> GUI.vm){
+      await GUI.handleSpriteUpload(new Blob([ab], {type:'application/zip'}));
+      return;
     }
+    var vm = window.vm || (GUI </body></body> GUI.vm);
+    if (!vm) throw new Error('VM missing');
+    await vm.addSprite(new Uint8Array(ab));
+  }
 
-    window.__sasc_ofetch = window.fetch.bind(window);
-    window.fetch = function(input, init){
-      const url = (typeof input === 'string') ? input : (input && input.url);
-      if (url && /internalapi\/asset\//i.test(url)) return tryFetchChain(url, init);
-      return window.__sasc_ofetch(input, init);
-    };
-    log('[fetch hook] installed (assets local-first)');
+  async function addBackdropFromURL(url){
+    var r = await fetch(url);
+    if (!r.ok) throw new Error('backdrop fetch ' + r.status);
+    var blob = await r.blob();
 
-    const OXHR = window.XMLHttpRequest;
-    function XHR(){
-      const x = new OXHR();
-      let openURL = null;
-      const _open = x.open;
-      x.open = function(method, url){ openURL = url; return _open.apply(x, arguments); };
-      const _send = x.send;
-      x.send = function(){
-        if (openURL && /internalapi\/asset\//i.test(openURL)) {
-          const chain = rewriteAssetURL(openURL);
-          let idx = 0;
-          const tryOne = ()=>{
-            const u = chain[idx++]; if (!u) return _send.apply(x, arguments);
-            _open.call(x, 'GET', u);
-            x.addEventListener('load', function onloadOnce(){
-              x.removeEventListener('load', onloadOnce);
-              if (x.status >= 200 && x.status < 300) { if (idx>1) log('[ASSET FALLBACK OK] ' + u); }
-              else { log('[ASSET NOT OK '+x.status+'] ' + u); tryOne(); }
-            });
-            _send.apply(x, arguments);
-          };
-          tryOne(); return;
-        }
-        return _send.apply(x, arguments);
-      };
-      return x;
+    var GUI = window.GUI;
+    if (GUI </body></body> GUI.handleBackdropUpload </body></body> GUI.vm){
+      await GUI.handleBackdropUpload(blob, 'image/png');
+      return;
     }
-    window.XMLHttpRequest = XHR;
-    log('[xhr hook] installed (assets local-first)');
-  })();
-  </script>
+    var vm = window.vm || (GUI </body></body> GUI.vm);
+    if (!vm) throw new Error('VM missing');
+    var stage = vm.runtime.getTargetForStage();
+    if (!stage) throw new Error('No stage target');
+    await vm.importSpriteCostume(blob, {targetId: stage.id}); // add as backdrop
+  }
 
-  <script id="gui-bundle"
-          src="scratch-gui.js?v=umd-boot-{{DATE-alt}}"
-          onload="window.__sascLog('GUI bundle loaded');(function boot(){try{
-            const app=document.getElementById('app'); const GUI=window.GUI;
-            if(!GUI){window.__sascLog('ERROR: window.GUI missing after script load');return;}
-            if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
-            if(typeof GUI.render==='function'){ GUI.render(app); window.__sascLog('GUI mounted via GUI.render(app)'); return; }
-            let Wrapped=GUI.default||GUI.GUI||GUI;
-            if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
-            if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
-            if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
-            const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
-            const el=window.React.createElement(Wrapped, props);
-            window.ReactDOM.render(el, app);
-            window.__sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+props.projectId);
-            const t=setInterval(()=>{try{const vm=window.vm||(GUI&&GUI.vm); if(vm&&vm.runtime&&vm.runtime.targets&&vm.runtime.targets.length){window.__sascLog('[VM] ready: '+vm.runtime.targets.length+' targets'); clearInterval(t);}}catch(_){}} ,250);
-            setTimeout(()=>clearInterval(t),15000);
-          }catch(e){window.__sascLog('BOOT ERROR: '+(e&&e.message)); console.error(e);}})();"
-          onerror="window.__sascLog('ERROR: failed to load scratch-gui.js (check the path)');"></script>
+  whenVMReady(async function(){
+    try{
+      console.log('[SASC] Preloading Apple + Sky (local-first)…');
+      await addSpriteFromURL(assetURL(cfg.APPLE_SPRITE3));
+      await addBackdropFromURL(assetURL(cfg.SKY_PNG));
+      console.log('[SASC] Apple + Sky loaded (local)');
+    }catch(e1){
+      console.warn('[SASC] Local preload failed; trying CDN fallback', e1);
+      try{
+        await addSpriteFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.APPLE_SPRITE3+'/get/');
+        await addBackdropFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.SKY_PNG+'/get/');
+        console.log('[SASC] Apple + Sky loaded (CDN)');
+      }catch(e2){
+        console.error('[SASC] Apple/Sky load failed (local+CDN)', e2);
+      }
+    }
+  });
+})();
+ /* --- /SASC PRELOAD APPLE+SKY --- */
+</script>
 </body>
 </html>
