@@ -35,6 +35,11 @@
         const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
         const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
 
+        const LOCAL_PINNED = new Set([
+          '3826a4091a33e4d26f87a2fac7cf796b.svg', // Apple
+          'e7c147730f19d284bcd7b3f00af19bb6.svg'  // Blue Sky
+        ]);
+
         function urlOf(input){
           try{
             return (typeof input==='string')
@@ -52,27 +57,31 @@
           if (!u) return null;
           let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
           if (m) return m[1];
-          m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
-          if (m && u.pathname.includes('/static/assets/')) return m[1];
+          m = u.pathname.match(/\/static\/assets\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
+          if (m) return m[1];
           return null;
         }
-        function localAssetURL(md5ext){
-          return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
-        }
+        function localURL(md5ext){ return LOCAL_ASSET_PREFIX + md5ext; }
+
         async function tryLocalThenRemote(init, md5ext){
-          const local = localAssetURL(md5ext);
+          const local = localURL(md5ext);
+          console.log('[ASSET]', md5ext, '→ try local', local);
           if (local) {
             const r = await origFetch(local, init);
+            console.log('[ASSET]', md5ext, 'local status', r.status);
             if (r.ok) return r;
           }
           const remote = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
+          console.log('[ASSET]', md5ext, '→ fallback remote', remote);
           return origFetch(remote, init);
         }
 
         window.fetch = async function(input, init){
           const u = urlOf(input);
+
           if (isLibJson(u)) {
             const libURL = toProjectURL(u);
+            console.log('[LIB]', u.href, '→', libURL);
             return (typeof input==='string') ? origFetch(libURL, init)
                                              : origFetch(new Request(libURL, input), init);
           }
@@ -81,14 +90,23 @@
             return (typeof input==='string') ? origFetch(projURL, init)
                                              : origFetch(new Request(projURL, input), init);
           }
+
           const md5ext = extractMd5ext(u);
-          if (md5ext) return tryLocalThenRemote(init, md5ext);
+          if (md5ext) {
+            if (LOCAL_PINNED.has(md5ext)) {
+              const forced = localURL(md5ext);
+              console.log('[ASSET]', md5ext, 'FORCED local', forced);
+              const req = (typeof input==='string') ? forced : new Request(forced, input);
+              return origFetch(req, init);
+            }
+            return tryLocalThenRemote(init, md5ext);
+          }
+
           return origFetch(input, init);
         };
       })();
     </script>
 
-    <!-- Fully bundled build -->
     <script defer src="gui.js" onerror="__bubbleError && __bubbleError('gui.js failed to load')"></script>
 
     <style>
