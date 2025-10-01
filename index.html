@@ -1,166 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="google" value="notranslate"/>
-  <link rel="shortcut icon" href="static/favicon.ico"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="google" content="notranslate" />
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
+  <link rel="icon" href="static/favicon.ico" />
 
-  <!-- 1) Load React/ReactDOM/Redux UMDs FIRST (React 16) -->
+  <style>
+    html,body{height:100%;margin:0;background:#fff;}
+    body{overflow:hidden;}
+    /* SASC mini console (bottom-left) */
+    #sasc-console{position:fixed;left:8px;bottom:8px;z-index:99999;
+      background:#111;color:#0f0;padding:8px 10px;border-radius:6px;font:12px/1.35 monospace;max-width:min(50vw,520px);max-height:30vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+    #sasc-console b{color:#7cf}
+  </style>
+
+  <!-- 1) React 16.14 + ReactDOM 16.14 + Redux (UMD) -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js" crossorigin></script>
 
-  <!-- 2) Minimal in-page console (bottom-left) -->
-  <style>
-    html, body { height:100%; margin:0; }
-    body { overflow:hidden; background:#111; }
-    #sascConsole {
-      position: fixed; left: 8px; bottom: 8px; width: 360px; max-height: 40vh;
-      background: rgba(0,0,0,.8); color: #d8f3dc; font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
-      border: 1px solid #2a2a2a; border-radius: 8px; padding: 8px; z-index: 999999;
-      box-shadow: 0 4px 18px rgba(0,0,0,.5); overflow: auto;
-    }
-    #sascConsole b { color:#b8e994; }
-    #sascConsole .warn { color:#ffd166; }
-    #sascConsole .err  { color:#ff6b6b; }
-  </style>
-  <div id="sascConsole" aria-live="polite"></div>
-  <script>
-    (function(){
-      const logBox = document.getElementById('sascConsole');
-      function log(line, cls){ const p=document.createElement('div'); if(cls)p.className=cls; p.textContent=line; logBox.appendChild(p); logBox.scrollTop=logBox.scrollHeight; }
-      function l(...a){ log(a.join(' ')); }
-      function w(...a){ log(a.join(' '),'warn'); }
-      function e(...a){ log(a.join(' '),'err'); }
-      window.SASC = { log:l, warn:w, err:e };
-      l('[SASC] Console ready');
-      l('[SASC] href:', location.href);
-      window.addEventListener('click', ev => l('[Click]', ev.target?.tagName || '?'));
-      window.addEventListener('keydown', ev => l('[Key]', ev.key));
-    })();
-  </script>
-
-  <!-- 3) Subpath + asset rewrite shim -->
+  <!-- 2) Lowercase aliases expected by some UMD chunks -->
   <script>
   (function(){
-    const {log:LOG, warn:WARN} = window.SASC || console;
+    window.react     = window.react     || window.React;
+    window['react-dom'] = window['react-dom'] || window.ReactDOM;
+    window.redux     = window.redux     || window.Redux;
+  })();
+  </script>
+
+  <!-- 3) Fetch rewriter: libraries/, static/, chunks/, internalapi/asset/ -->
+  <script>
+  (function(){
+    const log = (...a)=>{ try{ sascLog(...a); }catch(_){ console.log('[SASC]', ...a); } };
+
+    const ORIGIN = location.origin;
+    // Repo base path ensures we never fetch from https://kotzem1977.github.io/<wrong>/
+    const basePath = location.pathname.replace(/\/[^/]*$/, '/'); // keep trailing slash
+    const repoRoot = ORIGIN + basePath; // e.g., https://.../sasc-scratch-editor/
+
+    function toRepoURL(u){
+      const rel = String(u).replace(/^\//,''); // strip leading slash
+      return new URL(rel, repoRoot).toString();
+    }
 
     const origFetch = window.fetch && window.fetch.bind(window);
-    if (!origFetch) { WARN('[SASC] fetch not found'); return; }
+    if (!origFetch) return;
 
-    // Your Pages subpath (owner/repo/)
-    const REPO_SUBPATH = '/sasc-scratch-editor/';
-    const BASE = location.origin + REPO_SUBPATH;
-    const LOCAL_ASSETS = BASE + 'static/assets/';
+    function rewrite(url){
+      try{
+        const u = new URL(url, location.href);
 
-    // Known GUI requests we want to trap
-    const LIB_RX    = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
-    const SUB_RX    = /^\/(static|chunks)\//;
-    const INT_ASSET = /^\/?internalapi\/asset\/([a-f0-9]{32}\.[a-z0-9]+)\/get\/?$/i;
+        // Fix double slashes in our own path
+        if (u.pathname.includes('//')) u.pathname = u.pathname.replace(/\/{2,}/g,'/');
 
-    function toRepoURL(urlLike){
-      try {
-        const u = new URL(urlLike, location.href);
-
-        // Any same-origin requests to /libraries or /static|/chunks → add subpath
-        if (u.origin === location.origin) {
-          if (LIB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
-          if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
-          const m = u.pathname.match(INT_ASSET);
-          if (m && m[1]) u.href = LOCAL_ASSETS + m[1];
+        // 1) Libraries JSON (sprites, backdrops, costumes, sounds) → repo root
+        if (u.pathname.startsWith('/libraries/')) {
+          return toRepoURL(u.pathname);
         }
-        // Also handle bare paths (defensive)
-        if (LIB_RX.test(u.pathname))  u.href = BASE + 'libraries/' + u.pathname.split('/').pop();
-        if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
-        const m2 = u.pathname.match(INT_ASSET);
-        if (m2 && m2[1]) u.href = LOCAL_ASSETS + m2[1];
+        if (u.pathname.startsWith('libraries/')) {
+          return toRepoURL(u.pathname);
+        }
 
-        return u.toString();
-      } catch {
-        return urlLike;
-      }
+        // 2) Static/chunks emitted by our build → repo root
+        if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/chunks/')) {
+          return toRepoURL(u.pathname);
+        }
+
+        // 3) Scratch internal asset/project API → our local copies
+        //    /internalapi/asset/<md5ext>/get/  →  static/assets/<md5ext>
+        const mAsset1 = u.pathname.match(/^\/internalapi\/asset\/([a-f0-9]{32}\.\w+)\/get\/?$/i);
+        const mAsset2 = u.pathname.match(/^internalapi\/asset\/([a-f0-9]{32}\.\w+)\/get\/?$/i);
+        const m = mAsset1 || mAsset2;
+        if (m) {
+          const md5ext = m[1];
+          return toRepoURL('static/assets/' + md5ext);
+        }
+
+      }catch(_){}
+      return url;
     }
 
     window.fetch = function(input, init){
       if (typeof input === 'string') {
-        const fixed = toRepoURL(input);
-        if (fixed !== input) LOG('[SASC] fetch:', input, '→', fixed);
+        const fixed = rewrite(input);
+        if (fixed !== input) log('rewrote', input, '→', fixed);
         return origFetch(fixed, init);
       } else if (input && typeof input.url === 'string') {
-        const fixed = toRepoURL(input.url);
+        const fixed = rewrite(input.url);
         if (fixed !== input.url) {
-          LOG('[SASC] fetch(Request):', input.url, '→', fixed);
+          log('rewrote', input.url, '→', fixed);
           input = new Request(fixed, input);
         }
         return origFetch(input, init);
       }
       return origFetch(input, init);
     };
-
-    // Also rewrite <img src="internalapi/asset/.../get/">
-    const OrigImage = window.Image;
-    if (OrigImage) {
-      window.Image = function(w,h){
-        const img = new OrigImage(w,h);
-        let _src = '';
-        Object.defineProperty(img, 'src', {
-          get(){ return _src; },
-          set(v){
-            const m = String(v).match(INT_ASSET);
-            if (m && m[1]) {
-              const fixed = LOCAL_ASSETS + m[1];
-              LOG('[SASC] image:', v, '→', fixed);
-              _src = fixed;
-              return HTMLImageElement.prototype.setAttribute.call(img, 'src', fixed);
-            }
-            _src = v;
-            return HTMLImageElement.prototype.setAttribute.call(img, 'src', v);
-          }
-        });
-        return img;
-      };
-    }
-
   })();
   </script>
 
-  <!-- 4) React aliasing + controlled GUI injection -->
-  <script>
-  (function boot(){
-    const {log:LOG, warn:WARN, err:ERR} = window.SASC || console;
-
-    // Make absolutely sure all global names exist
-    const R = window.React || window.react;
-    const RD = window.ReactDOM || window['react-dom'] || window.reactDom || window.reactDOM;
-    const RX = window.Redux || window.redux;
-
-    if (!window.React && window.react)      window.React = window.react;
-    if (!window.ReactDOM && window['react-dom']) window.ReactDOM = window['react-dom'];
-    if (!window.Redux && window.redux)      window.Redux = window.redux;
-
-    LOG('[SASC] React present:', !!(window.React), 'version:', window.React && window.React.version);
-    LOG('[SASC] ReactDOM present:', !!(window.ReactDOM));
-    LOG('[SASC] Redux present:', !!(window.Redux));
-
-    // Wait until React & ReactDOM are definitely ready, then inject scratch-gui.js
-    function ensureAndLoad(retries=0){
-      if (window.React && window.ReactDOM) {
-        LOG('[SASC] Injecting scratch-gui.js …');
-        const s = document.createElement('script');
-        s.src = 'scratch-gui.js?v=booted-react16';
-        s.onload = () => LOG('[SASC] GUI loaded');
-        s.onerror = () => ERR('[SASC] Failed to load GUI bundle');
-        document.head.appendChild(s);
-        return;
-      }
-      if (retries > 200) return ERR('[SASC] React not found after ~5s');
-      setTimeout(() => ensureAndLoad(retries+1), 25);
-    }
-    ensureAndLoad();
-  })();
-  </script>
 </head>
-<body></body>
+<body>
+  <!-- SASC mini console -->
+  <div id="sasc-console"></div>
+  <script>
+    (function(){
+      const el=document.getElementById('sasc-console');
+      window.sascLog=function(...a){
+        const line=document.createElement('div');
+        line.textContent=a.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');
+        el.appendChild(line);
+        el.scrollTop=el.scrollHeight;
+      };
+      sascLog('Console ready');
+      sascLog('href:', location.href);
+      sascLog('React:', !!window.React, 'v', window.React && React.version);
+      sascLog('Redux:', !!window.Redux);
+    })();
+    // Click tracer
+    document.addEventListener('click',e=>{
+      try{ sascLog('[click]', e.target.tagName); }catch(_){}
+    }, true);
+  </script>
+
+  <!-- GUI host element (some builds mount themselves; if not, we can mount manually later) -->
+  <div id="app" style="height:100%;"></div>
+
+  <!-- 4) Load our bundled GUI (UMD). The fetch hook + aliases are already active. -->
+  <script src="scratch-gui.js?v=boot-stable"></script>
+  <script>
+    sascLog('GUI script requested');
+  </script>
+</body>
 </html>
