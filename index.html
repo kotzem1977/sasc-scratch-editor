@@ -6,7 +6,7 @@
   <meta name="google" value="notranslate"/>
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
-  <!-- SASC v3 -->
+  <!-- SASC v4 -->
 
   <!-- Known-good UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
@@ -21,28 +21,39 @@
       position:fixed;left:12px;bottom:12px;z-index:99999;
       font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       color:#eee;background:#111;opacity:.95;border:1px solid #333;border-radius:8px;
-      max-width:50vw;max-height:30vh;overflow:auto;padding:8px 10px;box-shadow:0 6px 16px rgba(0,0,0,.5)
+      max-width:60vw;max-height:40vh;overflow:auto;padding:8px 10px;box-shadow:0 6px 16px rgba(0,0,0,.5)
     }
     #sasc-console b{color:#9ad}
+    #sasc-console .err{color:#f99}
+    #sasc-console .ok{color:#9f9}
   </style>
 
   <script>
-  (function(){
+  (function SASC_boot(){
+    // ----- overlay & logging -----
+    const box = document.createElement('div');
+    box.id = 'sasc-console';
+    box.innerHTML = '<b>[SASC]</b> console ready<br/>';
     function log(){ try{
-      const box = document.getElementById('sasc-console');
-      if (box) box.innerHTML += Array.from(arguments).map(a=>String(a)).join(' ') + '<br/>';
+      box.innerHTML += Array.from(arguments).map(a=>String(a)).join(' ') + '<br/>';
+      console.log('[SASC]', ...arguments);
+    }catch(_){} }
+    function logErr(){ try{
+      box.innerHTML += '<span class="err">' + Array.from(arguments).map(a=>String(a)).join(' ') + '</span><br/>';
+      console.error('[SASC]', ...arguments);
+    }catch(_){} }
+    function logOk(){ try{
+      box.innerHTML += '<span class="ok">' + Array.from(arguments).map(a=>String(a)).join(' ') + '</span><br/>';
       console.log('[SASC]', ...arguments);
     }catch(_){}
     }
-    // overlay
-    const div = document.createElement('div');
-    div.id = 'sasc-console';
-    div.innerHTML = '<b>[SASC]</b> Console ready<br/>';
+    window.addEventListener('error', e => logErr('onerror:', e.message||e));
+    window.addEventListener('unhandledrejection', e => logErr('unhandledrejection:', e.reason||e));
     document.addEventListener('click', e => log('[Click]', e.target.tagName));
-    if (document.body) document.body.appendChild(div);
-    else document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(div));
+    document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(box));
+    if (document.body) document.body.appendChild(box);
 
-    // alias shim (some UMDs expect lowercase names)
+    // ----- alias shim -----
     if (window.React && !window.react) { window.react = window.React; log('react alias set'); }
     if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; log('react-dom alias set'); }
     if (window.Redux && !window.redux) { window.redux = window.Redux; log('redux alias set'); }
@@ -52,26 +63,26 @@
     log('ReactDOM present:', !!window['react-dom']);
     log('Redux present:', !!window.redux);
 
-    // fetch() rewrite so GUI works under /<user>/<repo>/ subpath + self-hosted assets
+    // ----- fetch rewriter (subpath + self-hosted assets) -----
     (function(){
       const origFetch = window.fetch && window.fetch.bind(window);
       if (!origFetch) return;
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/');      // “…/sasc-scratch-editor/”
-      const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2); // ["kotzem1977","sasc-scratch-editor"]
-      const repoPath = '/' + ownerRepo.join('/');                        // "/kotzem1977/sasc-scratch-editor"
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/'); // "/<user>/<repo>/"
+      const ownerRepo = basePath.split('/').filter(Boolean).slice(0,2);
+      const repoPath = '/' + ownerRepo.join('/');
 
       function toLocal(urlStr){
         const u = new URL(urlStr, location.origin + basePath);
 
-        // libraries JSON (sprites/backdrops/etc.) must come from the repo
+        // libraries JSON -> repo path
         if (u.pathname.startsWith('/libraries/')) {
           u.pathname = (repoPath + u.pathname).replace(/\/{2,}/g,'/');
         }
-        // static + chunks should resolve under current basePath
+        // static/chunks -> preserve subpath
         else if (u.pathname.startsWith('/static/') || u.pathname.startsWith('/chunks/')) {
           u.pathname = (basePath.replace(/\/$/, '') + u.pathname).replace(/\/{2,}/g,'/');
         }
-        // internalapi → self-hosted assets
+        // internalapi asset -> static/assets/<md5ext>
         else if (u.pathname.startsWith('/internalapi/asset/')) {
           const m = u.pathname.match(/^\/internalapi\/asset\/([^/]+)\/get\/?$/);
           if (m) u.pathname = (basePath + 'static/assets/' + m[1]).replace(/\/{2,}/g,'/');
@@ -79,7 +90,6 @@
           const m = u.pathname.match(/^internalapi\/asset\/([^/]+)\/get\/?$/);
           if (m) u.pathname = (basePath + 'static/assets/' + m[1]).replace(/\/{2,}/g,'/');
         }
-
         return u.toString();
       }
 
@@ -87,25 +97,119 @@
         try{
           if (typeof input === 'string') {
             const fixed = toLocal(input);
-            if (fixed !== input) console.log('[SASC fetch]', input, '→', fixed);
+            if (fixed !== input) log('[fetch]', input, '→', fixed);
             return origFetch(fixed, init);
           } else if (input && typeof input.url === 'string') {
             const fixed = toLocal(input.url);
             if (fixed !== input.url) {
-              console.log('[SASC fetch]', input.url, '→', fixed);
+              log('[fetch]', input.url, '→', fixed);
               input = new Request(fixed, input);
             }
             return origFetch(input, init);
           }
-        }catch(e){ console.warn('[SASC fetch] rewrite error', e); }
+        }catch(e){ logErr('[fetch] rewrite error', e); }
         return origFetch(input, init);
       };
     })();
+
+    // ----- GUI bootstrapper -----
+    function mountGUI(){
+      const el = document.getElementById('app');
+      const R = window.React || window.react;
+      const RD = window.ReactDOM || window['react-dom'];
+
+      // known candidate globals that different UMD builds may use
+      const cands = [
+        'ScratchGUI',        // component or factory
+        'scratchGui',
+        'GUI',
+        'App',               // some bundles export App
+        'default',           // when the UMD writes to window.default (rare)
+      ];
+
+      // Try obvious object on window first
+      const wins = [window];
+
+      // If the script attached a namespace, try those too
+      // (these are guesses to increase coverage)
+      if (window.Scratch) wins.push(window.Scratch);
+      if (window.scratch) wins.push(window.scratch);
+
+      function tryRenderComponent(comp, label){
+        try{
+          RD.render(R.createElement(comp, {}), el);
+          logOk('Mounted GUI as React component via', label);
+          return true;
+        }catch(e){
+          logErr('Component mount failed via', label, ':', e && (e.stack||e.message||e));
+          return false;
+        }
+      }
+      function tryCallRender(obj, label){
+        try{
+          if (typeof obj.render === 'function') {
+            obj.render(el); // some bundles expose {render(el)}
+            logOk('Mounted GUI via', label, '.render(el)');
+            return true;
+          }
+        }catch(e){
+          logErr('render(el) failed on', label, ':', e && (e.stack||e.message||e));
+        }
+        return false;
+      }
+
+      // Strategy 1: a global with .render(el)
+      for (const root of wins){
+        if (!root) continue;
+        for (const k of cands){
+          const v = root[k];
+          if (!v) continue;
+          if (typeof v === 'object' && typeof v.render === 'function') {
+            if (tryCallRender(v, `window.${k}`)) return true;
+          }
+          if (v && typeof v === 'object' && typeof v.default === 'object' && typeof v.default.render === 'function') {
+            if (tryCallRender(v.default, `window.${k}.default`)) return true;
+          }
+        }
+      }
+
+      // Strategy 2: a React component directly
+      for (const root of wins){
+        if (!root) continue;
+        for (const k of cands){
+          const v = root[k];
+          if (!v) continue;
+
+          // If it's a function/class, treat as React component
+          if (typeof v === 'function') {
+            if (tryRenderComponent(v, `window.${k}`)) return true;
+          }
+          // default export as component
+          if (v && typeof v === 'object' && typeof v.default === 'function') {
+            if (tryRenderComponent(v.default, `window.${k}.default`)) return true;
+          }
+        }
+      }
+
+      // Strategy 3: the UMD attached itself as last <script> return (very rare)
+      logErr('Could not auto-detect a render function or component. GUI did not mount.');
+      log('window keys snapshot (filtered):', Object.keys(window).filter(k=>/gui|scratch|GUI|App/i.test(k)).join(', ') || '(none)');
+      return false;
+    }
+
+    function afterGuiLoaded(){
+      // defer a tick so the UMD has time to attach globals
+      setTimeout(mountGUI, 0);
+    }
+
+    // Inject GUI with a cache-buster
+    const s = document.createElement('script');
+    s.src = 'scratch-gui.js?v=stable-boot';
+    s.onload = () => { log('GUI script loaded'); afterGuiLoaded(); };
+    s.onerror = () => logErr('Failed to load scratch-gui.js');
+    document.head.appendChild(s);
   })();
   </script>
-
-  <!-- Load your built Scratch GUI bundle -->
-  <script defer src="scratch-gui.js?v=stable"></script>
 </head>
 <body>
   <div id="app"></div>
