@@ -7,20 +7,28 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-    <!-- Fix for GitHub Pages subpath -->
+    <!-- Subpath + library fetch fixer -->
     <script>
     (function(){
       const origFetch = window.fetch;
       if (!origFetch) return;
 
+      // Project info (edit if you ever rename the repo/branch)
+      const OWNER  = 'kotzem1977';
+      const REPO   = 'sasc-scratch-editor';
+      const BRANCH = 'main';
+
       // e.g. /sasc-scratch-editor/index.html -> /sasc-scratch-editor/
-      const basePath = (location.pathname.replace(/\/[^/]*$/, '/')); 
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
 
-      // Only rewrite these root-relative prefixes
-      const PREFIXES = ['/libraries/', '/static/', '/chunks/'];
+      // Prefixes the GUI requests as root-relative paths
+      const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
 
-      function needsRewrite(u) {
-        return typeof u === 'string' && PREFIXES.some(p => u.startsWith(p));
+      // Match /libraries/*.json exactly
+      const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+
+      function needsSubpathRewrite(u) {
+        return typeof u === 'string' && SUBPATH_PREFIXES.some(p => u.startsWith(p));
       }
 
       function toProjectURL(u) {
@@ -28,9 +36,27 @@
         return new URL(rel, location.origin + basePath).toString();
       }
 
+      function maybeLibraryRawURL(u) {
+        if (typeof u !== 'string') return null;
+        const m = u.match(LIB_JSON);
+        if (!m) return null;
+        const file = m[0].replace(/^\//, ''); // libraries/xxx.json
+        // Raw GitHub URL (CORS: *)
+        return `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${file}`;
+      }
+
       window.fetch = function(u, opts){
-        const fixed = needsRewrite(u) ? toProjectURL(u) : u;
-        return origFetch.call(this, fixed, opts);
+        // 1) If it's a library JSON, rewrite to raw GitHub
+        const rawLib = maybeLibraryRawURL(u);
+        if (rawLib) {
+          return origFetch.call(this, rawLib, opts);
+        }
+        // 2) Fix root-relative subpaths (/static, /chunks) to project subpath
+        if (needsSubpathRewrite(u)) {
+          return origFetch.call(this, toProjectURL(u), opts);
+        }
+        // 3) Everything else as-is
+        return origFetch.call(this, u, opts);
       };
     })();
     </script>
