@@ -10,10 +10,12 @@
     <script>
       (function(){
         function bubble(msg){
-          const d=document.createElement('div');
-          d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
-          d.textContent='[Bootstrap] '+msg;
-          document.documentElement.appendChild(d);
+          try{
+            const d=document.createElement('div');
+            d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
+            d.textContent='[Bootstrap] '+msg;
+            document.documentElement.appendChild(d);
+          }catch(_){}
         }
         window.addEventListener('error', e => bubble(e.message||'script error'));
         window.addEventListener('unhandledrejection', e => bubble((e.reason && (e.reason.message||String(e.reason))) || 'promise rejection'));
@@ -86,46 +88,8 @@
       })();
     </script>
 
-    <script>
-      (function loadReactThenBundle(){
-        const reactCDNs = [
-          'https://cdn.jsdelivr.net/npm/react@17/umd/react.production.min.js',
-          'https://unpkg.com/react@17/umd/react.production.min.js',
-          'https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js'
-        ];
-        const domCDNs = [
-          'https://cdn.jsdelivr.net/npm/react-dom@17/umd/react-dom.production.min.js',
-          'https://unpkg.com/react-dom@17/umd/react-dom.production.min.js',
-          'https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js'
-        ];
-
-        function add(src, cb){
-          const s=document.createElement('script');
-          s.src=src; s.crossOrigin='anonymous';
-          s.onload=cb; s.onerror=cb;
-          document.head.appendChild(s);
-        }
-        function ensureGlobal(name, cdns, done){
-          let i=0;
-          (function tryNext(){
-            if (window[name]) return done();
-            if (i>=cdns.length) return done(new Error(name+' failed to load'));
-            add(cdns[i++], () => setTimeout(tryNext, 0));
-          })();
-        }
-        ensureGlobal('React', reactCDNs, function(err1){
-          if (err1) { console.error(err1); window.__bubbleError('React failed to load'); return; }
-          ensureGlobal('ReactDOM', domCDNs, function(err2){
-            if (err2) { console.error(err2); window.__bubbleError('ReactDOM failed to load'); return; }
-            const s=document.createElement('script');
-            s.defer=true;
-            s.src='scratch-gui.js';
-            s.onerror=()=>window.__bubbleError('scratch-gui.js failed to load');
-            document.head.appendChild(s);
-          });
-        });
-      })();
-    </script>
+    <!-- Fully bundled build -->
+    <script defer src="gui.js" onerror="__bubbleError && __bubbleError('gui.js failed to load')"></script>
 
     <style>
       html, body { height: 100%; margin: 0; }
