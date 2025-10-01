@@ -7,19 +7,20 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-    <!-- Single, combined fetch shim: subpath-safe libs + local-first md5ext assets -->
+    <!-- React globals required by scratch-gui.js -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin></script>
+
+    <!-- One combined fetch shim: subpath-safe libs + local-first md5ext assets -->
     <script>
     (function(){
       if (!window.fetch) return;
       const origFetch = window.fetch.bind(window);
 
-      // Where our page lives (e.g. /sasc-scratch-editor/)
       const basePath = location.pathname.replace(/\/[^/]*$/, '/');
-      // Absolute base URL for things we host in this repo
       const ABS_BASE = new URL(basePath, location.origin).toString();
       const LOCAL_ASSET_PREFIX = new URL('./static/assets/', ABS_BASE).toString();
 
-      // Helpers
       const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
       const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
 
@@ -30,33 +31,23 @@
             : (input && typeof input.url === 'string' ? new URL(input.url, location.href) : null);
         } catch { return null; }
       }
-
-      function isLibJson(u){
-        return !!(u && LIB_JSON.test(u.pathname));
-      }
-      function needsSubpathRewrite(u){
-        return !!(u && SUBPATH_PREFIXES.some(p => u.pathname.startsWith(p)));
-      }
+      function isLibJson(u){ return !!(u && LIB_JSON.test(u.pathname)); }
+      function needsSubpathRewrite(u){ return !!(u && SUBPATH_PREFIXES.some(p => u.pathname.startsWith(p))); }
       function toProjectURL(u){
         const rel = u.pathname.replace(/^\//, '') + (u.search || '') + (u.hash || '');
         return new URL(rel, ABS_BASE).toString();
       }
-
       function extractMd5ext(u){
         if (!u) return null;
-        // /internalapi/asset/<md5ext>/get/
         let m = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
         if (m) return m[1];
-        // bare /static/assets/<md5ext> (just in case)
         m = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
         if (m && (u.pathname.includes('/static/assets/'))) return m[1];
         return null;
       }
-
       function localAssetURL(md5ext){
         return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? LOCAL_ASSET_PREFIX + md5ext : null;
       }
-
       async function tryLocalThenRemote(init, md5ext){
         const local = localAssetURL(md5ext);
         if (local) {
@@ -69,34 +60,26 @@
 
       window.fetch = async function(input, init){
         const u = urlOf(input);
-
-        // 1) Force /libraries/*.json to load from our repo path
         if (isLibJson(u)) {
           const libURL = toProjectURL(u);
           if (typeof input === 'string') return origFetch(libURL, init);
           return origFetch(new Request(libURL, input), init);
         }
-
-        // 2) Rewrite /static/ and /chunks/ from absolute to our subpath
         if (needsSubpathRewrite(u)) {
           const projURL = toProjectURL(u);
           if (typeof input === 'string') return origFetch(projURL, init);
           return origFetch(new Request(projURL, input), init);
         }
-
-        // 3) md5ext assets: check our local copy first, then CDN
         const md5ext = extractMd5ext(u);
         if (md5ext) return tryLocalThenRemote(init, md5ext);
-
-        // Default
         return origFetch(input, init);
       };
 
       // Tiny on-screen error helper so "black screen" shows a reason
       function showErr(msg){
         const d = document.createElement('div');
-        d.style.cssText = 'position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
-        d.textContent = '[Bootstrap] ' + msg;
+        d.style.cssText='position:fixed;left:8px;bottom:8px;max-width:96%;z-index:99999;background:#2b2b2b;color:#fff;padding:10px 12px;border-radius:8px;font:12px/1.4 system-ui,Segoe UI,Arial';
+        d.textContent='[Bootstrap] '+msg;
         document.documentElement.appendChild(d);
       }
       window.addEventListener('error', e => showErr(e.message || 'script error'));
