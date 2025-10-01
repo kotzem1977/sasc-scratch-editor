@@ -6,7 +6,7 @@
   <meta name="google" value="notranslate"/>
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
-  <!-- SASC v4 -->
+  <!-- SASC v5 -->
 
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
@@ -28,15 +28,13 @@
   </style>
 
   <script>
-  /* identical to index.html’s script except bundle query at the end differs */
   (function SASC_boot(){
     const box = document.createElement('div');
     box.id = 'sasc-console';
     box.innerHTML = '<b>[SASC]</b> console ready<br/>';
-    function log(){ try{ box.innerHTML += Array.from(arguments).map(a=>String(a)).join(' ') + '<br/>'; console.log('[SASC]', ...arguments);}catch(_){} }
-    function logErr(){ try{ box.innerHTML += '<span class="err">' + Array.from(arguments).map(a=>String(a)).join(' ') + '</span><br/>'; console.error('[SASC]', ...arguments);}catch(_){} }
-    function logOk(){ try{ box.innerHTML += '<span class="ok">' + Array.from(arguments).map(a=>String(a)).join(' ') + '</span><br/>'; console.log('[SASC]', ...arguments);}catch(_){} }
-
+    function log(){ try{ box.innerHTML += Array.from(arguments).join(' ') + '<br/>'; console.log('[SASC]', ...arguments);}catch(_){} }
+    function logErr(){ try{ box.innerHTML += '<span class="err">' + Array.from(arguments).join(' ') + '</span><br/>'; console.error('[SASC]', ...arguments);}catch(_){} }
+    function logOk(){ try{ box.innerHTML += '<span class="ok">' + Array.from(arguments).join(' ') + '</span><br/>'; console.log('[SASC]', ...arguments);}catch(_){} }
     window.addEventListener('error', e => logErr('onerror:', e.message||e));
     window.addEventListener('unhandledrejection', e => logErr('unhandledrejection:', e.reason||e));
     document.addEventListener('click', e => log('[Click]', e.target.tagName));
@@ -46,7 +44,6 @@
     if (window.React && !window.react) { window.react = window.React; log('react alias set'); }
     if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; log('react-dom alias set'); }
     if (window.Redux && !window.redux) { window.redux = window.Redux; log('redux alias set'); }
-
     log('href:', location.href);
     log('React present:', !!window.react, 'version:', window.react && window.react.version);
     log('ReactDOM present:', !!window['react-dom']);
@@ -95,49 +92,33 @@
     })();
 
     function mountGUI(){
-      const el = document.getElementById('app');
-      const R = window.React || window.react;
+      const R  = window.React || window.react;
       const RD = window.ReactDOM || window['react-dom'];
-      const cands = ['ScratchGUI','scratchGui','GUI','App','default'];
-      const wins = [window];
-      if (window.Scratch) wins.push(window.Scratch);
-      if (window.scratch) wins.push(window.scratch);
+      const el = document.getElementById('app');
 
-      function tryRenderComponent(comp, label){
-        try{ RD.render(R.createElement(comp, {}), el); logOk('Mounted GUI as component via', label); return true; }
-        catch(e){ logErr('Component mount failed via', label, ':', e && (e.stack||e.message||e)); return false; }
+      const G = window.GUI || {};
+      if (G && typeof G.render === 'function') {
+        try { G.render(el); logOk('Mounted via GUI.render(el)'); return true; }
+        catch(e){ logErr('GUI.render(el) failed:', e && (e.stack||e.message||e)); }
       }
-      function tryCallRender(obj, label){
-        try{ if (typeof obj.render === 'function') { obj.render(el); logOk('Mounted GUI via', label, '.render(el)'); return true; } }
-        catch(e){ logErr('render(el) failed on', label, ':', e && (e.stack||e.message||e)); }
-        return false;
+      if (G && typeof G.AppStateHOC === 'function' && G.default) {
+        try {
+          const Root = G.AppStateHOC(G.default);
+          RD.render(R.createElement(Root, {}), el);
+          logOk('Mounted via GUI.AppStateHOC(GUI.default)');
+          return true;
+        } catch(e){ logErr('AppStateHOC mount failed:', e && (e.stack||e.message||e)); }
       }
-
-      for (const root of wins){
-        if (!root) continue;
-        for (const k of cands){
-          const v = root[k];
-          if (!v) continue;
-          if (typeof v === 'object' && typeof v.render === 'function') { if (tryCallRender(v, `window.${k}`)) return true; }
-          if (v && typeof v === 'object' && typeof v.default === 'object' && typeof v.default.render === 'function') { if (tryCallRender(v.default, `window.${k}.default`)) return true; }
-        }
+      if (G && typeof G.default === 'function') {
+        try { RD.render(R.createElement(G.default, {}), el); logOk('Mounted GUI.default as component'); return true; }
+        catch(e){ logErr('GUI.default component mount failed:', e && (e.stack||e.message||e)); }
       }
-      for (const root of wins){
-        if (!root) continue;
-        for (const k of cands){
-          const v = root[k];
-          if (!v) continue;
-          if (typeof v === 'function') { if (tryRenderComponent(v, `window.${k}`)) return true; }
-          if (v && typeof v === 'object' && typeof v.default === 'function') { if (tryRenderComponent(v.default, `window.${k}.default`)) return true; }
-        }
-      }
-      logErr('Could not auto-detect a render function or component. GUI did not mount.');
-      log('window keys snapshot (filtered):', Object.keys(window).filter(k=>/gui|scratch|GUI|App/i.test(k)).join(', ') || '(none)');
+      logErr('Could not mount GUI. window keys:', Object.keys(window).filter(k=>/gui|scratch|GUI|App/i.test(k)).join(', ') || '(none)');
       return false;
     }
 
     const s = document.createElement('script');
-    s.src = 'scratch-gui.js?v=stable-alt-boot';
+    s.src = 'scratch-gui.js?v=stable-alt-boot-v5';
     s.onload = () => { log('GUI script loaded'); setTimeout(mountGUI, 0); };
     s.onerror = () => logErr('Failed to load scratch-gui.js');
     document.head.appendChild(s);
