@@ -13,28 +13,39 @@
     #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
+
+    /* safety net */
+    #app [class*="stage-wrapper"] { position: relative; z-index: 0; }
+    #app [class*="green-flag"], #app [class*="stop-all"] { z-index: 1; position: relative; }
+    #app canvas { cursor: default; }
   </style>
 
-  <!-- same CSS bootstrapper -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN = 'https://scratchfoundation.github.io';
-    var PAGE   = ORIGIN + '/scratch-gui/';
+    var BASE   = ORIGIN + '/scratch-gui';
+    function add(href){ var l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
+    function toAbs(p){ if(!p)return null; if(p.startsWith('http'))return p; if(p.startsWith('//'))return 'https:'+p; if(p.startsWith('/'))return ORIGIN+p; return BASE+'/'+p.replace(/^\.?\//,''); }
     if (document.documentElement.hasAttribute('data-sasc-css-loaded')) return;
-    document.documentElement.setAttribute('data-sasc-css-loaded', '1');
-    fetch(PAGE).then(function(r){return r.text();}).then(function(html){
-      var re=/<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+\.css)["']/gi, m, hrefs=[];
-      while((m=re.exec(html))){ hrefs.push(m[1]); }
-      hrefs.forEach(function(href){
-        var url = href.startsWith('http') ? href
-          : (href.startsWith('//') ? ('https:' + href)
-             : (href.startsWith('/') ? (ORIGIN + href)
-                : (ORIGIN + '/scratch-gui/' + href)));
-        var link=document.createElement('link'); link.rel='stylesheet'; link.href=url;
-        document.head.appendChild(link);
+    document.documentElement.setAttribute('data-sasc-css-loaded','1');
+    fetch(BASE + '/asset-manifest.json')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(man => {
+        var files = (man && man.files) || {};
+        var css = [];
+        Object.keys(files).forEach(k => { if (/\.css$/.test(files[k])) css.push(files[k]); });
+        if (Array.isArray(man.entrypoints)) man.entrypoints.forEach(ep => { if (/\.css$/.test(ep)) css.push(ep);});
+        css = Array.from(new Set(css)).map(toAbs); css.forEach(add);
+        console.log('[SASC] injected Scratch GUI CSS via manifest:', css);
+      })
+      .catch(() => {
+        fetch(BASE + '/').then(r=>r.text()).then(html=>{
+          var re=/<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+\.css)["']/gi, m, hrefs=[];
+          while((m=re.exec(html))){ hrefs.push(m[1]); }
+          hrefs = hrefs.map(toAbs); hrefs.forEach(add);
+          console.log('[SASC] injected Scratch GUI CSS via HTML parse:', hrefs);
+        }).catch(e=>console.warn('[SASC] failed to inject demo CSS:', e));
       });
-      console.log('[SASC] injected Scratch GUI CSS:', hrefs);
-    }).catch(function(e){ console.warn('[SASC] failed to fetch demo CSS:', e); });
   })();
   </script>
 </head>
@@ -80,10 +91,8 @@
     })();
   </script>
 
-  <!-- your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
 
-  <!-- robust boot -->
   <script>
     (function(){
       try{
@@ -112,7 +121,6 @@
         window.ReactDOM.render(el, app);
         __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with default projectId=0');
 
-        // optional VM ready ping
         let waited=0;
         const t=setInterval(()=>{try{
           const vm=window.vm||(GUI&&GUI.vm);
