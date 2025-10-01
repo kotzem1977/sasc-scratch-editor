@@ -3,28 +3,45 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (v8)</title>
-  <style>html,body,#app{height:100%;margin:0}#app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-  #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
-  color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
-  #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
-  #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
-  #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}</style>
-  <!-- SASC CSS BEGIN -->
+  <title>SASC Scratch Editor — alt (clean)</title>
 
-  <!-- SASC CSS END -->
+  <style>
+    html,body,#app{height:100%;margin:0}
+    #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
+      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+    #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
+    #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
+  </style>
+
+  <!-- same CSS bootstrapper -->
+  <script>
+  (function loadScratchGuiCSS(){
+    var ORIGIN = 'https://scratchfoundation.github.io';
+    var PAGE   = ORIGIN + '/scratch-gui/';
+    if (document.documentElement.hasAttribute('data-sasc-css-loaded')) return;
+    document.documentElement.setAttribute('data-sasc-css-loaded', '1');
+    fetch(PAGE).then(function(r){return r.text();}).then(function(html){
+      var re=/<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+\.css)["']/gi, m, hrefs=[];
+      while((m=re.exec(html))){ hrefs.push(m[1]); }
+      hrefs.forEach(function(href){
+        var url = href.startsWith('http') ? href
+          : (href.startsWith('//') ? ('https:' + href)
+             : (href.startsWith('/') ? (ORIGIN + href)
+                : (ORIGIN + '/scratch-gui/' + href)));
+        var link=document.createElement('link'); link.rel='stylesheet'; link.href=url;
+        document.head.appendChild(link);
+      });
+      console.log('[SASC] injected Scratch GUI CSS:', hrefs);
+    }).catch(function(e){ console.warn('[SASC] failed to fetch demo CSS:', e); });
+  })();
+  </script>
 </head>
 <body>
-  <div id="app"></div>  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-  <script>
-    (function(){
-      if (window.React && !window.react) window.react = window.React;
-      if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM;
-      if (window.Redux && !window.redux) window.redux = window.Redux;
-    })();
-  </script>  <div id="sasc-console"><header><strong>SASC</strong><div>
+  <div id="app"></div>
+
+  <div id="sasc-console"><header><strong>SASC</strong><div>
     <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button></div></header><pre>SASC clear
 </pre></div>
   <script>
@@ -32,78 +49,80 @@
       window.addEventListener('click',e=>__sascLog('[Click] '+e.target.tagName));
       window.addEventListener('unhandledrejection',e=>__sascLog('[unhandledrejection]: '+(e.reason&&(e.reason.stack||e.reason))));
     })();
-  </script>  <script>
+  </script>
+
+  <!-- React 16.14 UMD -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+
+  <!-- asset hooks -->
+  <script>
     (function(){
       const base = location.pathname.replace(/\/[^/]*$/, '/'); const repoRoot=base.replace(/\/$/,'');
       const toLocal = u => {
-        const m = u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
+        const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
         return m ? repoRoot + '/static/assets/' + m[1] : null;
       };
       const f = window.fetch;
-      window.fetch = async function(i,init){const url=(typeof i==='string')?i:(i&&i.url);const local=url&&toLocal(url);
+      window.fetch = async function(i,init){
+        const url=(typeof i==='string')?i:(i&&i.url);
+        const local=url&&toLocal(url);
         if(local){__sascLog('[fetch] local-first: '+local+' (← '+url+')');const r=await f(local,init).catch(()=>null);if(r&&r.ok)return r;}
         return f.apply(this,arguments);
       };
       const XO = XMLHttpRequest;
-      window.XMLHttpRequest = function(){const x=new XO();const op=x.open;x.open=function(m,u){const local=typeof u==='string'?toLocal(u):null;
-        if(local){__sascLog('[xhr] local-first: '+local+' (← '+u+')');return op.call(x,m,local);}return op.apply(x,arguments);};return x;};
-      __sascLog('[fetch/xhr hooks] installed');
+      window.XMLHttpRequest = function(){const x=new XO();const op=x.open;x.open=function(m,u){
+        const local=typeof u==='string'?toLocal(u):null;
+        if(local){__sascLog('[xhr] local-first: '+local+' (← '+u+')');return op.call(x,m,local);}return op.apply(x,arguments);
+      };return x;};
+      __sascLog('[hooks] installed (assets local-first)');
     })();
-  </script>  <script src="scratch-gui.js?v=stable-boot-v8-alt"></script>
+  </script>
+
+  <!-- your GUI bundle -->
+  <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
+
+  <!-- robust boot -->
   <script>
     (function(){
       try{
         const app=document.getElementById('app');
-        if (window.GUI && typeof window.GUI.setAppElement === 'function') window.GUI.setAppElement(app);
         const GUI=window.GUI;
+        if (!GUI) { __sascLog('ERROR: window.GUI missing'); return; }
+        if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
+
+        if (typeof GUI.render === 'function') {
+          GUI.render(app);
+          __sascLog('GUI mounted via GUI.render(app)');
+          return;
+        }
+
         let Wrapped = GUI.default || GUI.GUI || GUI;
-        Wrapped = GUI.AppStateHOC(Wrapped);
-        Wrapped = GUI.ProjectLoaderHOC ? GUI.ProjectLoaderHOC(Wrapped) : Wrapped;
-        Wrapped = GUI.HashParserHOC ? GUI.HashParserHOC(Wrapped) : Wrapped;
-        const el = window.React.createElement(Wrapped, {isPlayerOnly:false,isFullScreen:false,canUseCloud:false});
+        if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
+        if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+        if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
+
+        const el = window.React.createElement(Wrapped, {
+          isPlayerOnly:false,
+          isFullScreen:false,
+          canUseCloud:false,
+          projectId: (location.hash && /\d+/.test(location.hash)) ? undefined : '0'
+        });
         window.ReactDOM.render(el, app);
-        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI)))');
-      }catch(e){__sascLog('BOOT ERROR: '+(e.stack||e));console.error(e);}
+        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with default projectId=0');
+
+        // optional VM ready ping
+        let waited=0;
+        const t=setInterval(()=>{try{
+          const vm=window.vm||(GUI&&GUI.vm);
+          if(vm&&vm.runtime&&vm.runtime.targets&&vm.runtime.targets.length){
+            __sascLog('[VM] ready: '+vm.runtime.targets.length+' targets');
+            clearInterval(t);
+          }
+        }catch(_){} if((waited+=250)>15000){clearInterval(t);__sascLog('VM not ready in time');}},250);
+      }catch(e){__sascLog('BOOT ERROR: '+(e&&e.message)); console.error(e);}
     })();
   </script>
-<script>
-</script>
-  <script>(function boot(){
-    const log = m => (window.__sascLog ? __sascLog(m) : console.log("[SASC]", m));
-    try {
-      const app = document.getElementById("app");
-      const GUI = window.GUI;
-      if (!GUI) { log("ERROR: window.GUI missing"); return; }
-      if (typeof GUI.setAppElement === "function") GUI.setAppElement(app);
-      if (typeof GUI.render === "function") {
-        GUI.render(app);
-        log("GUI mounted via GUI.render(app)");
-      } else {
-        let Wrapped = GUI.default || GUI.GUI || GUI;
-        if (typeof GUI.AppStateHOC === "function") Wrapped = GUI.AppStateHOC(Wrapped);
-        if (typeof GUI.ProjectLoaderHOC === "function") Wrapped = GUI.ProjectLoaderHOC(Wrapped);
-        if (typeof GUI.HashParserHOC === "function") Wrapped = GUI.HashParserHOC(Wrapped);
-        const props = {
-          isPlayerOnly: false,
-          isFullScreen: false,
-          canUseCloud: false,
-          projectId: (location.hash && /\d+/.test(location.hash)) ? undefined : "0"
-        };
-        const el = window.React.createElement(Wrapped, props);
-        window.ReactDOM.render(el, app);
-        log("GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=" + (props.projectId || "hash"));
-      }
-      let waited = 0;
-      const tick = setInterval(() => {
-        const vm = window.vm || (GUI && GUI.vm);
-        if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) {
-          log("[VM] ready: " + vm.runtime.targets.length + " targets");
-          clearInterval(tick);
-          window.SASC_VM_READY = true;
-        }
-        if ((waited += 250) > 15000) { clearInterval(tick); log("VM not ready in time"); }
-      }, 250);
-    } catch (e) { (window.__sascLog||console.error)("BOOT ERROR: " + (e.stack || e)); }
-  })();</script>
 </body>
 </html>
