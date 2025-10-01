@@ -7,42 +7,91 @@
     <link rel="shortcut icon" href="static/favicon.ico" />
     <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-    <!-- Self-host asset rewriter: routes internalapi assets to /cdn-assets/<md5ext> -->
+    <!-- Subpath + library fetch fixer -->
     <script>
     (function(){
       const origFetch = window.fetch && window.fetch.bind(window);
       if (!origFetch) return;
 
-      function toLocalAssetURL(u) {
-        const url = typeof u === 'string' ? u : u.url;
+      const basePath = location.pathname.replace(/\/[^/]*$/, '/');
+      const SUBPATH_PREFIXES = ['/static/', '/chunks/'];
+      const LIB_JSON = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+
+      function needsSubpathRewrite(u) {
+        return typeof u === 'string' && SUBPATH_PREFIXES.some(p => u.startsWith(p));
+      }
+      function toProjectURL(u) {
+        const rel = u.replace(/^\//, '');
+        return new URL(rel, location.origin + basePath).toString();
+      }
+      function maybeLibraryRawURL(u) {
+        if (typeof u !== 'string') return null;
+        const m = u.match(LIB_JSON);
+        if (!m) return null;
+        const file = m[0].replace(/^\//, '');
+        return new URL(file, location.origin + basePath).toString();
+      }
+
+      window.fetch = function(u, opts){
+        const lib = maybeLibraryRawURL(u);
+        if (lib) return origFetch.call(this, lib, opts);
+        if (needsSubpathRewrite(u)) return origFetch.call(this, toProjectURL(u), opts);
+        return origFetch.call(this, u, opts);
+      };
+    })();
+    </script>
+
+    <!-- Local-first md5ext asset hook -->
+    <script>
+    (function(){
+      const origFetch = window.fetch && window.fetch.bind(window);
+      if (!origFetch) return;
+
+      const LOCAL_PREFIX = new URL('./static/assets/', location.href).toString();
+
+      function toLocal(md5ext) {
+        return /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(md5ext) ? (LOCAL_PREFIX + md5ext) : null;
+      }
+
+      function rewrite(url) {
         try {
-          const parsed = new URL(url, location.href);
-          const p = parsed.pathname.replace(/^\//, '');
-          if (p.startsWith('internalapi/asset/')) {
-            const parts = p.split('/');
-            const md5ext = parts[2];
-            if (md5ext && md5ext.includes('.')) {
-              const base = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
-              return base + 'cdn-assets/' + md5ext;
-            }
+          const u = new URL(url, location.href);
+          const m1 = u.pathname.match(/\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i);
+          if (m1) return { md5ext: m1[1] };
+          const m2 = u.pathname.match(/\/([0-9a-f]{32}\.[a-z0-9]+)$/i);
+          if (m2 && (u.hostname === location.hostname || u.pathname.startsWith('/static/assets/'))) {
+            return { md5ext: m2[1] };
           }
-        } catch (_) {}
+        } catch(_){}
         return null;
       }
 
-      window.fetch = function(input, init){
-        const candidate = toLocalAssetURL(input);
-        if (candidate) {
-          if (typeof input === 'string') return origFetch(candidate, init);
-          return origFetch(new Request(candidate, input), init);
+      async function tryLocalThenRemote(init, md5ext) {
+        const localURL  = toLocal(md5ext);
+        if (localURL) {
+          const resLocal = await origFetch(localURL, init);
+          if (resLocal.ok) return resLocal;
+        }
+        const remoteURL = `https://assets.scratch.mit.edu/internalapi/asset/${md5ext}/get/`;
+        return origFetch(remoteURL, init);
+      }
+
+      window.fetch = async function(input, init) {
+        if (typeof input === 'string') {
+          const r = rewrite(input);
+          if (r?.md5ext) return tryLocalThenRemote(init, r.md5ext);
+          return origFetch(input, init);
+        } else if (input && typeof input.url === 'string') {
+          const r = rewrite(input.url);
+          if (r?.md5ext) return tryLocalThenRemote(init, r.md5ext);
+          return origFetch(input, init);
         }
         return origFetch(input, init);
       };
     })();
     </script>
 
-    <!-- Use the alternate bundle if you prefer -->
-    <script defer src="gui.js"></script>
+    <script defer src="scratch-gui.js"></script>
 
     <style>
       html, body { height: 100%; margin: 0; }
