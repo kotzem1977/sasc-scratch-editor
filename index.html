@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -7,94 +7,108 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-  <!-- React/DOM UMD (16.14; compatible with Scratch GUI) -->
-  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- react-is UMD (needed by some deps) -->
-  <script src="https://unpkg.com/react-is@16.13.1/umd/react-is.production.min.js" crossorigin></script>
-
-  <!-- Expose globals the way the UMD bundle expects -->
+  <!-- UMD aliases for React/Redux to avoid forwardRef black screen -->
   <script>
-    // Node-ish env shim some libs expect
-    window.global = window;
-    window.process = window.process || { env: { NODE_ENV: 'production' } };
-
-    // Map to the LOWERCASE keys that webpack’s UMD wrapper uses
-    // scratch-gui bundle often calls factory(root["react"], root["react-dom"], root["react-is"], …)
-    (function aliasUMDGlobals(){
-      if (window.React)       window.react = window.React;
-      if (window.ReactDOM)    window['react-dom'] = window.ReactDOM;
-      if (window.ReactIs)     window['react-is']  = window.ReactIs;
-    })();
-
-    // Early sanity checks (helpful if CDN hiccups)
-    if (!window.react || !window.react.forwardRef) {
-      console.error('[Bootstrap] React global missing or wrong: window.react=', window.react);
-    }
-    if (!window['react-dom']) {
-      console.error('[Bootstrap] ReactDOM global missing');
-    }
+  (function(){
+    // If the GUI exposes React/ReactDOM as globals under different names,
+    // alias them to the names react-redux expects.
+    if (window.react && !window.React)      window.React = window.react;
+    if (window.reactDom && !window.ReactDOM) window.ReactDOM = window.reactDom;
+    // Some builds stash Redux under a global.
+    if (window.redux && !window.Redux) window.Redux = window.redux;
+  })();
   </script>
 
-  <!-- Intercept Scratch asset fetches and point them to local /static/assets/<md5ext> -->
+  <!-- Subpath + asset rewrite shim -->
   <script>
-  (function () {
+  (function(){
     const origFetch = window.fetch && window.fetch.bind(window);
     if (!origFetch) return;
 
-    const INTERNAL_ASSET_RE = /\/internalapi\/asset\/([0-9a-f]{32}\.[a-z0-9]+)\/get\/?$/i;
-    const isScratchAssetHost =
-      h => (h === 'assets.scratch.mit.edu' || h === 'cdn.assets.scratch.mit.edu');
+    // Where this page actually lives on GitHub Pages:
+    // https://kotzem1977.github.io/sasc-scratch-editor/...
+    const REPO_SUBPATH = '/sasc-scratch-editor/';
+    const BASE = location.origin + REPO_SUBPATH;
 
-    function toLocalAssetURL(md5ext) {
-      const basePath = location.pathname.replace(/\/[^/]*$/, '/'); // keep repo subpath
-      return new URL('static/assets/' + md5ext, location.origin + basePath).toString();
-    }
-    function rewrite(url) {
+    // Local self-hosted asset directory for md5ext files
+    const LOCAL_ASSETS = BASE + 'static/assets/';
+
+    // Matchers
+    const LIB_RX    = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
+    const SUB_RX    = /^\/(static|chunks)\//;
+    const INT_ASSET = /^\/?internalapi\/asset\/([a-f0-9]{32}\.[a-z0-9]+)\/get\/?$/i;
+
+    function toRepo(urlLike){
       try {
-        const u = new URL(url, location.href);
-
-        // From Scratch hosts
-        if (isScratchAssetHost(u.hostname)) {
-          const m = u.pathname.match(INTERNAL_ASSET_RE);
-          if (m) return toLocalAssetURL(m[1]);
+        const u = new URL(urlLike, location.href);
+        // If request points at site root (no repo), rewrite to repo subpath
+        if (u.origin === location.origin) {
+          if (LIB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
+          if (SUB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
+          // internalapi/asset → self-hosted file
+          const m = u.pathname.match(INT_ASSET);
+          if (m && m[1]) u.href = LOCAL_ASSETS + m[1];
         }
-        // From our own origin
-        {
-          const m = u.pathname.match(INTERNAL_ASSET_RE);
-          if (m) return toLocalAssetURL(m[1]);
-        }
-      } catch (_) {}
-      return url;
+        // Also normalize accidental absolute to repo-less origin
+        if (LIB_RX.test(u.pathname))  u.href = BASE + 'libraries/' + u.pathname.split('/').pop();
+        if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
+        const m2 = u.pathname.match(INT_ASSET);
+        if (m2 && m2[1]) u.href = LOCAL_ASSETS + m2[1];
+        return u.toString();
+      } catch {
+        // Non-URL strings (e.g., Request) — leave as-is
+        return urlLike;
+      }
     }
 
-    window.fetch = function (input, init) {
+    window.fetch = function(input, init){
       if (typeof input === 'string') {
-        return origFetch(rewrite(input), init);
+        const fixed = toRepo(input);
+        if (fixed !== input) console.log('[SASC] fetch →', input, '==>', fixed);
+        return origFetch(fixed, init);
       } else if (input && typeof input.url === 'string') {
-        const newURL = rewrite(input.url);
-        if (newURL !== input.url) input = new Request(newURL, input);
+        const fixed = toRepo(input.url);
+        if (fixed !== input.url) {
+          console.log('[SASC] fetch(Request) →', input.url, '==>', fixed);
+          input = new Request(fixed, input);
+        }
         return origFetch(input, init);
       }
       return origFetch(input, init);
     };
+
+    // Also patch Image.src creation in case VM constructs asset URLs directly
+    const origImage = window.Image;
+    if (origImage) {
+      window.Image = function(w,h){
+        const img = new origImage(w,h);
+        let _src = '';
+        Object.defineProperty(img, 'src', {
+          get(){ return _src; },
+          set(v){
+            const m = String(v).match(INT_ASSET);
+            if (m && m[1]) {
+              const fixed = LOCAL_ASSETS + m[1];
+              console.log('[SASC] image →', v, '==>', fixed);
+              _src = fixed;
+              return HTMLImageElement.prototype.setAttribute.call(img, 'src', fixed);
+            }
+            _src = v;
+            return HTMLImageElement.prototype.setAttribute.call(img, 'src', v);
+          }
+        });
+        return img;
+      };
+    }
   })();
   </script>
 
-  <!-- Load the built Scratch GUI bundle (defer keeps order after UMDs) -->
-  <script>
-    (function(){
-      var s = document.createElement('script');
-      s.defer = true;
-      s.src = 'scratch-gui.js?v=umd-aliases';
-      s.onerror = function(e){ console.error('[Bootstrap] Failed to load scratch-gui.js', e); };
-      document.head.appendChild(s);
-    })();
-  </script>
+  <!-- Load the built GUI bundle AFTER shims -->
+  <script defer src="scratch-gui.js?v=stable"></script>
 
   <style>
-    html,body {height:100%;margin:0}
-    body {overflow:hidden;background:#111}
+    html, body { height:100%; margin:0; }
+    body { overflow:hidden; background:#111; }
   </style>
 </head>
 <body></body>
