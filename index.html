@@ -48,95 +48,60 @@
 </pre>
   </div>
   <script>
-    (function(){
-      const pre = document.querySelector('#sasc-console pre');
-      window.__sascLog = (m)=>{ try{ pre.textContent += m+'\n'; pre.scrollTop = pre.scrollHeight; }catch(_){} console.log(m); };
-      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
-      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
-    })();
-  </script>
+(function boot(){
+  const log = m => (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
+  try {
+    const app = document.getElementById('app');
+    const GUI = window.GUI;
 
-  <!-- fetch/xhr asset hooks (log + local-first) -->
-  <script>
-    (function(){
-      const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
-      const repoRoot = base.replace(/\/$/, '');
-      const toLocalAsset = (u) => {
-        // Only rewrite the Scratch asset CDN → our /static/assets/
-        const m = u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
-        if (m) return repoRoot + '/static/assets/' + m[1];
-        return null;
-      };
+    // Good accessibility for react-modal
+    if (GUI && typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
 
-      // fetch hook
-      const f = window.fetch;
-      window.fetch = async function(input, init){
-        const url = (typeof input === 'string') ? input : (input && input.url);
-        const local = url && toLocalAsset(url);
-        if (local){
-          __sascLog('[fetch] local-first: ' + local + ' (← ' + url + ')');
-          const r = await f(local, init).catch(()=>null);
-          if (r && r.ok) return r;
+    // 1) If the bundle provides a ready-made render() (many builds do), use it.
+    if (GUI && typeof GUI.render === 'function') {
+      GUI.render(app);                 // GUI handles store/vm/project boot internally
+      log('GUI mounted via GUI.render(app)');
+      return;
+    }
+
+    // 2) Fallback: compose the official HOC chain AND force default project id.
+    //    This replicates Scratch’s playground boot closely.
+    let Wrapped = GUI.default || GUI.GUI || GUI;
+    if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
+    if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+    if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
+
+    // Force default project if no hash route supplies one.
+    // (This is the key to restoring Cat + Backdrops button.)
+    const props = {
+      isPlayerOnly: false,
+      isFullScreen: false,
+      canUseCloud: false,
+      projectId: (location.hash && /\d+/.test(location.hash)) ? undefined : '0'
+    };
+
+    const el = window.React.createElement(Wrapped, props);
+    window.ReactDOM.render(el, app);
+
+    log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=' + props.projectId);
+
+    // Optional: wait until project is ready before interactions (avoids “variables” error)
+    // If the VM is exposed on window, you’ll see this flip quickly.
+    const readyTimer = setInterval(() => {
+      try {
+        const vm = window.vm || (GUI && GUI.vm);
+        if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) {
+          log('[VM] ready: ' + vm.runtime.targets.length + ' targets');
+          clearInterval(readyTimer);
         }
-        return f.apply(this, arguments);
-      };
-      __sascLog('[fetch hook] installed (libraries untouched, assets local-first)');
-
-      // XHR hook
-      const XO = XMLHttpRequest;
-      window.XMLHttpRequest = function(){
-        const x = new XO();
-        const op = x.open;
-        x.open = function(method, url){
-          const local = typeof url === 'string' ? toLocalAsset(url) : null;
-          if (local){
-            __sascLog('[xhr] local-first: ' + local + ' (← ' + url + ')');
-            return op.call(x, method, local);
-          }
-          return op.apply(x, arguments);
-        };
-        return x;
-      };
-      __sascLog('[xhr hook] installed (assets local-first)');
-    })();
-  </script>
-
-  <!-- Scratch GUI bundle from your repo -->
-  <script src="scratch-gui.js?v=stable-boot-v8"></script>
-
-  <!-- Mount with full HOC chain + setModalAppElement -->
-  <script>
-    (function boot(){
-      try{
-        const app = document.getElementById('app');
-
-        // react-modal needs this to hide background to screen readers when dialogs open
-        if (window.GUI && typeof window.GUI.setAppElement === 'function'){
-          window.GUI.setAppElement(app);
-        }
-
-        // Compose HOCs to match Scratch default boot:
-        // HashParserHOC(ProjectLoaderHOC(AppStateHOC(GUI)))
-        const GUI = window.GUI;
-        let Wrapped = GUI.default || GUI.GUI || GUI;
-        Wrapped = GUI.AppStateHOC(Wrapped);
-        Wrapped = GUI.ProjectLoaderHOC ? GUI.ProjectLoaderHOC(Wrapped) : Wrapped;
-        Wrapped = GUI.HashParserHOC ? GUI.HashParserHOC(Wrapped) : Wrapped;
-
-        // Render editor (not player-only)
-        const el = window.React.createElement(Wrapped, {
-          isPlayerOnly: false,
-          isFullScreen: false,
-          canUseCloud: false
-        });
-
-        window.ReactDOM.render(el, app);
-        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI)))');
-      }catch(e){
-        __sascLog('BOOT ERROR: ' + (e.stack || e));
-        console.error(e);
-      }
-    })();
-  </script>
+      } catch (_) {}
+    }, 250);
+    setTimeout(()=>clearInterval(readyTimer), 15000); // stop polling after 15s
+  } catch (e) {
+    (window.__sascLog||console.error)('BOOT ERROR: ' + (e.stack || e));
+    console.error(e);
+  }
+})();
+</script>
 </body>
 </html>
