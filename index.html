@@ -7,17 +7,10 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-  <!-- UMD aliases for React/Redux to avoid forwardRef black screen -->
-  <script>
-  (function(){
-    // If the GUI exposes React/ReactDOM as globals under different names,
-    // alias them to the names react-redux expects.
-    if (window.react && !window.React)      window.React = window.react;
-    if (window.reactDom && !window.ReactDOM) window.ReactDOM = window.reactDom;
-    // Some builds stash Redux under a global.
-    if (window.redux && !window.Redux) window.Redux = window.redux;
-  })();
-  </script>
+  <!-- Provide React/ReactDOM/Redux globals BEFORE the GUI bundle -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
 
   <!-- Subpath + asset rewrite shim -->
   <script>
@@ -25,15 +18,10 @@
     const origFetch = window.fetch && window.fetch.bind(window);
     if (!origFetch) return;
 
-    // Where this page actually lives on GitHub Pages:
-    // https://kotzem1977.github.io/sasc-scratch-editor/...
     const REPO_SUBPATH = '/sasc-scratch-editor/';
     const BASE = location.origin + REPO_SUBPATH;
-
-    // Local self-hosted asset directory for md5ext files
     const LOCAL_ASSETS = BASE + 'static/assets/';
 
-    // Matchers
     const LIB_RX    = /^\/libraries\/(sprites|backdrops|costumes|sounds)\.json$/;
     const SUB_RX    = /^\/(static|chunks)\//;
     const INT_ASSET = /^\/?internalapi\/asset\/([a-f0-9]{32}\.[a-z0-9]+)\/get\/?$/i;
@@ -41,24 +29,18 @@
     function toRepo(urlLike){
       try {
         const u = new URL(urlLike, location.href);
-        // If request points at site root (no repo), rewrite to repo subpath
         if (u.origin === location.origin) {
           if (LIB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
           if (SUB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
-          // internalapi/asset → self-hosted file
           const m = u.pathname.match(INT_ASSET);
           if (m && m[1]) u.href = LOCAL_ASSETS + m[1];
         }
-        // Also normalize accidental absolute to repo-less origin
         if (LIB_RX.test(u.pathname))  u.href = BASE + 'libraries/' + u.pathname.split('/').pop();
         if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
         const m2 = u.pathname.match(INT_ASSET);
         if (m2 && m2[1]) u.href = LOCAL_ASSETS + m2[1];
         return u.toString();
-      } catch {
-        // Non-URL strings (e.g., Request) — leave as-is
-        return urlLike;
-      }
+      } catch { return urlLike; }
     }
 
     window.fetch = function(input, init){
@@ -77,11 +59,10 @@
       return origFetch(input, init);
     };
 
-    // Also patch Image.src creation in case VM constructs asset URLs directly
-    const origImage = window.Image;
-    if (origImage) {
+    const OrigImage = window.Image;
+    if (OrigImage) {
       window.Image = function(w,h){
-        const img = new origImage(w,h);
+        const img = new OrigImage(w,h);
         let _src = '';
         Object.defineProperty(img, 'src', {
           get(){ return _src; },
@@ -103,8 +84,8 @@
   })();
   </script>
 
-  <!-- Load the built GUI bundle AFTER shims -->
-  <script defer src="scratch-gui.js?v=stable"></script>
+  <!-- Load the GUI AFTER the shims and libs -->
+  <script defer src="scratch-gui.js?v=react16"></script>
 
   <style>
     html, body { height:100%; margin:0; }
