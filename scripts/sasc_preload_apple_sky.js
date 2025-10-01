@@ -1,81 +1,138 @@
-/* --- SASC PRELOAD APPLE+SKY (idempotent) --- */
+/* --- SASC PRELOAD APPLE + SKY (idempotent) --- */
 (function preloadAppleSky(){
-  // You can set these dynamically at runtime via window.SASC_ASSETS too.
-  // Fill with your real md5.exts when you have them.
-  var DEFAULTS = {
-    APPLE_SPRITE3: 'REPLACE_APPLE.sprite3', // e.g. 3826a4091a33e4d26f87a2fac7cf796b.sprite3
-    SKY_PNG:       'REPLACE_SKY.png'        // e.g. b6c96d...something....png
-  };
+  if (window.__sascPreloadInstalled) return;
+  window.__sascPreloadInstalled = true;
 
-  var cfg = Object.assign({}, DEFAULTS, (window.SASC_ASSETS||{}));
+  var DEFAULTS = {
+    // If you have a real sprite bundle, set APPLE_SPRITE3 to "<md5>.sprite3".
+    // Otherwise we can create a sprite from a PNG/JPG below via APPLE_PNG.
+    APPLE_SPRITE3: null,
+    APPLE_PNG:     null,  // e.g. "<md5>.png" under /static/assets/
+    SKY_PNG:       null   // e.g. "<md5>.png" under /static/assets/
+  };
+  var CFG = Object.assign({}, DEFAULTS, (window.SASC_ASSETS || {}));
+
+  function log(m){
+    try{
+      var p = document.querySelector('#sasc-console pre');
+      if (p) p.textContent += m + '\n';
+    }catch(_){}
+    console.log('[SASC preload]', m);
+  }
+
+  function repoBase(){
+    // /<user>/<repo>/.../index.html -> "/<user>/<repo>/"
+    var base = location.pathname.replace(/\/[^/]*$/, '/');
+    return base;
+  }
+  function localUrl(md5ext){
+    return repoBase().replace(/\/$/, '') + '/static/assets/' + md5ext;
+  }
 
   function whenVMReady(cb, timeoutMs){
     timeoutMs = timeoutMs || 15000;
     var t0 = Date.now();
-    var tm = setInterval(function(){
+    (function tick(){
       var GUI = window.GUI;
-      var vm  = window.vm || (GUI && GUI.vm);
+      var vm = window.vm || (GUI && GUI.vm);
       if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length){
-        clearInterval(tm); cb(vm); return;
+        return cb(vm);
       }
-      if (Date.now() - t0 > timeoutMs) clearInterval(tm);
-    }, 200);
-  }
-
-  function assetURL(md5ext){
-    // Leverage your local-first hooks by pointing at /static/assets first
-    var base = location.pathname.replace(/\/[^/]*$/, '/');
-    return base.replace(/\/$/, '') + '/static/assets/' + md5ext;
-  }
-
-  async function addSpriteFromURL(url){
-    var r = await fetch(url);
-    if (!r.ok) throw new Error('sprite fetch ' + r.status);
-    var ab = await r.arrayBuffer();
-
-    var GUI = window.GUI;
-    if (GUI && GUI.handleSpriteUpload && GUI.vm){
-      await GUI.handleSpriteUpload(new Blob([ab], {type:'application/zip'}));
-      return;
-    }
-    var vm = window.vm || (GUI && GUI.vm);
-    if (!vm) throw new Error('VM missing');
-    await vm.addSprite(new Uint8Array(ab));
+      if (Date.now() - t0 > timeoutMs) {
+        log('VM not ready after ' + timeoutMs + 'ms; continuing anyway');
+        return cb(vm || null);
+      }
+      setTimeout(tick, 150);
+    })();
   }
 
   async function addBackdropFromURL(url){
     var r = await fetch(url);
     if (!r.ok) throw new Error('backdrop fetch ' + r.status);
-    var blob = await r.blob();
-
+    var blob = await r.blob();               // image/*
     var GUI = window.GUI;
     if (GUI && GUI.handleBackdropUpload && GUI.vm){
-      await GUI.handleBackdropUpload(blob, 'image/png');
+      await GUI.handleBackdropUpload(blob, blob.type || 'image/png');
       return;
     }
     var vm = window.vm || (GUI && GUI.vm);
-    if (!vm) throw new Error('VM missing');
-    var stage = vm.runtime.getTargetForStage();
-    if (!stage) throw new Error('No stage target');
-    await vm.importSpriteCostume(blob, {targetId: stage.id}); // add as backdrop
+    if (!vm) throw new Error('VM missing for backdrop');
+    // Fallback path (older builds):
+    if (vm.loadBackdrop && vm.loadBackdropFromURL){
+      await vm.loadBackdropFromURL(url);
+      return;
+    }
+    // Last-ditch: treat as costume on stage (works in many builds)
+    if (vm.addBackdrop){
+      await vm.addBackdrop(blob);
+      return;
+    }
+    log('No suitable backdrop importer found');
+  }
+
+  async function addSpriteFromURL(url){
+    var r = await fetch(url);
+    if (!r.ok) throw new Error('sprite fetch ' + r.status);
+    var ext = (url.split('.').pop() || '').toLowerCase();
+    var GUI = window.GUI;
+
+    // Image → sprite
+    if (/(png|jpg|jpeg|gif|svg)$/.test(ext)){
+      var blob = await r.blob(); // image/*
+      if (GUI && GUI.handleSpriteUpload && GUI.vm){
+        await GUI.handleSpriteUpload(blob, blob.type || 'image/png');
+        return;
+      }
+      var vm = window.vm || (GUI && GUI.vm);
+      if (!vm) throw new Error('VM missing for sprite');
+      // Best effort: add as costume to selected target
+      if (vm.addCostume) {
+        await vm.addCostume(blob);
+        return;
+      }
+      log('No suitable sprite importer found (image fallback)');
+      return;
+    }
+
+    // .sprite3 /.sprite2
+    var ab = await r.arrayBuffer();
+    if (GUI && GUI.handleSpriteUpload && GUI.vm){
+      await GUI.handleSpriteUpload(new Blob([ab], {type:'application/zip'}));
+      return;
+    }
+    var vm2 = window.vm || (GUI && GUI.vm);
+    if (!vm2) throw new Error('VM missing for sprite');
+    if (vm2.addSprite) {
+      await vm2.addSprite(new Uint8Array(ab));
+      return;
+    }
+    log('No suitable sprite importer found (.sprite3 fallback)');
   }
 
   whenVMReady(async function(){
     try{
-      console.log('[SASC] Preloading Apple + Sky (local-first)…');
-      await addSpriteFromURL(assetURL(cfg.APPLE_SPRITE3));
-      await addBackdropFromURL(assetURL(cfg.SKY_PNG));
-      console.log('[SASC] Apple + Sky loaded (local)');
-    }catch(e1){
-      console.warn('[SASC] Local preload failed; trying CDN fallback', e1);
-      try{
-        await addSpriteFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.APPLE_SPRITE3+'/get/');
-        await addBackdropFromURL('https://assets.scratch.mit.edu/internalapi/asset/'+cfg.SKY_PNG+'/get/');
-        console.log('[SASC] Apple + Sky loaded (CDN)');
-      }catch(e2){
-        console.error('[SASC] Apple/Sky load failed (local+CDN)', e2);
+      // SKY backdrop
+      if (CFG.SKY_PNG){
+        var skyURL = localUrl(CFG.SKY_PNG);
+        log('Preload: adding Sky backdrop from ' + skyURL);
+        await addBackdropFromURL(skyURL);
       }
+
+      // APPLE sprite (prefer .sprite3; otherwise a PNG sprite)
+      if (CFG.APPLE_SPRITE3) {
+        var spr3URL = localUrl(CFG.APPLE_SPRITE3);
+        log('Preload: adding Apple sprite3 from ' + spr3URL);
+        await addSpriteFromURL(spr3URL);
+      } else if (CFG.APPLE_PNG) {
+        var appleURL = localUrl(CFG.APPLE_PNG);
+        log('Preload: adding Apple PNG sprite from ' + appleURL);
+        await addSpriteFromURL(appleURL);
+      }
+
+      log('Preload complete.');
+    }catch(e){
+      log('Preload error: ' + (e && e.message ? e.message : e));
+      console.error(e);
     }
   });
 })();
- /* --- /SASC PRELOAD APPLE+SKY --- */
