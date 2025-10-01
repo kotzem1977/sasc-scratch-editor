@@ -7,26 +7,36 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI — SA SchoolCoding</title>
 
-  <!-- React/DOM UMD (React 16.14 to match Scratch GUI expectations) -->
+  <!-- React/DOM UMD (16.14; compatible with Scratch GUI) -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- react-is UMD (needed by some deps) -->
+  <script src="https://unpkg.com/react-is@16.13.1/umd/react-is.production.min.js" crossorigin></script>
 
-  <!-- Minimal node-ish shims some webpack bundles expect -->
+  <!-- Expose globals the way the UMD bundle expects -->
   <script>
+    // Node-ish env shim some libs expect
     window.global = window;
     window.process = window.process || { env: { NODE_ENV: 'production' } };
-  </script>
 
-  <!-- Early sanity check: tell us if React didn't load -->
-  <script>
-    (function(){
-      if (!window.React || !window.React.forwardRef) {
-        console.error('[Bootstrap] React missing or too old. React=', window.React);
-      }
+    // Map to the LOWERCASE keys that webpack’s UMD wrapper uses
+    // scratch-gui bundle often calls factory(root["react"], root["react-dom"], root["react-is"], …)
+    (function aliasUMDGlobals(){
+      if (window.React)       window.react = window.React;
+      if (window.ReactDOM)    window['react-dom'] = window.ReactDOM;
+      if (window.ReactIs)     window['react-is']  = window.ReactIs;
     })();
+
+    // Early sanity checks (helpful if CDN hiccups)
+    if (!window.react || !window.react.forwardRef) {
+      console.error('[Bootstrap] React global missing or wrong: window.react=', window.react);
+    }
+    if (!window['react-dom']) {
+      console.error('[Bootstrap] ReactDOM global missing');
+    }
   </script>
 
-  <!-- Fetch interceptor: route /internalapi/asset/<md5ext>/get to local static/assets/<md5ext> -->
+  <!-- Intercept Scratch asset fetches and point them to local /static/assets/<md5ext> -->
   <script>
   (function () {
     const origFetch = window.fetch && window.fetch.bind(window);
@@ -49,7 +59,7 @@
           const m = u.pathname.match(INTERNAL_ASSET_RE);
           if (m) return toLocalAssetURL(m[1]);
         }
-        // From our own origin (some builds do /internalapi on same host)
+        // From our own origin
         {
           const m = u.pathname.match(INTERNAL_ASSET_RE);
           if (m) return toLocalAssetURL(m[1]);
@@ -71,12 +81,12 @@
   })();
   </script>
 
-  <!-- Your built GUI bundle (add a loader that logs if it fails to fetch) -->
+  <!-- Load the built Scratch GUI bundle (defer keeps order after UMDs) -->
   <script>
     (function(){
       var s = document.createElement('script');
       s.defer = true;
-      s.src = 'scratch-gui.js?v=react16';
+      s.src = 'scratch-gui.js?v=umd-aliases';
       s.onerror = function(e){ console.error('[Bootstrap] Failed to load scratch-gui.js', e); };
       document.head.appendChild(s);
     })();
