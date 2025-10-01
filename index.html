@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (v8)</title>
+  <title>SASC Scratch Editor — index (v9)</title>
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
@@ -18,24 +18,6 @@
 <body>
   <div id="app"></div>
 
-  <!-- React 16.14 UMD -->
-  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-
-  <!-- alias shim -->
-  <script>
-    (function(){
-      if (window.React && !window.react)      { window.react = window.React;      console.log('[SASC] react alias set');}
-      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; console.log('[SASC] react-dom alias set');}
-      if (window.Redux && !window.redux)      { window.redux = window.Redux;      console.log('[SASC] redux alias set');}
-      console.log('[SASC] href:', location.href);
-      console.log('[SASC] React present:', !!window.React, 'version:', window.React && window.React.version);
-      console.log('[SASC] ReactDOM present:', !!window.ReactDOM);
-      console.log('[SASC] Redux present:', !!window.Redux);
-    })();
-  </script>
-
   <!-- SASC console -->
   <div id="sasc-console">
     <header>
@@ -47,61 +29,88 @@
     <pre>SASC clear
 </pre>
   </div>
+
   <script>
-(function boot(){
-  const log = m => (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
-  try {
-    const app = document.getElementById('app');
-    const GUI = window.GUI;
-
-    // Good accessibility for react-modal
-    if (GUI && typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
-
-    // 1) If the bundle provides a ready-made render() (many builds do), use it.
-    if (GUI && typeof GUI.render === 'function') {
-      GUI.render(app);                 // GUI handles store/vm/project boot internally
-      log('GUI mounted via GUI.render(app)');
-      return;
-    }
-
-    // 2) Fallback: compose the official HOC chain AND force default project id.
-    //    This replicates Scratch’s playground boot closely.
-    let Wrapped = GUI.default || GUI.GUI || GUI;
-    if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
-    if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
-    if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
-
-    // Force default project if no hash route supplies one.
-    // (This is the key to restoring Cat + Backdrops button.)
-    const props = {
-      isPlayerOnly: false,
-      isFullScreen: false,
-      canUseCloud: false,
-      projectId: (location.hash && /\d+/.test(location.hash)) ? undefined : '0'
-    };
-
-    const el = window.React.createElement(Wrapped, props);
-    window.ReactDOM.render(el, app);
-
-    log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=' + props.projectId);
-
-    // Optional: wait until project is ready before interactions (avoids “variables” error)
-    // If the VM is exposed on window, you’ll see this flip quickly.
-    const readyTimer = setInterval(() => {
+    // tiny logger into the overlay
+    window.__sascLog = function(msg){
       try {
-        const vm = window.vm || (GUI && GUI.vm);
-        if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) {
-          log('[VM] ready: ' + vm.runtime.targets.length + ' targets');
-          clearInterval(readyTimer);
-        }
-      } catch (_) {}
-    }, 250);
-    setTimeout(()=>clearInterval(readyTimer), 15000); // stop polling after 15s
-  } catch (e) {
-    (window.__sascLog||console.error)('BOOT ERROR: ' + (e.stack || e));
-    console.error(e);
-  }
-})();
-</script>
+        const z = document.querySelector('#sasc-console pre');
+        if (z) z.textContent += (msg + '\n');
+      } catch(_) {}
+      console.log('[SASC]', msg);
+    };
+    __sascLog('overlay ready');
+  </script>
+
+  <!-- React 16.14 UMD (aliases for older UMD expectations) -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+  <script>
+    (function(){
+      if (window.React && !window.react)            { window.react = window.React;            __sascLog('react alias set');}
+      if (window.ReactDOM && !window['react-dom'])  { window['react-dom'] = window.ReactDOM;  __sascLog('react-dom alias set');}
+      if (window.Redux && !window.redux)            { window.redux = window.Redux;            __sascLog('redux alias set');}
+      __sascLog('href: ' + location.href);
+      __sascLog('React present: ' + !!window.React + ' version: ' + (window.React && window.React.version));
+      __sascLog('ReactDOM present: ' + !!window.ReactDOM);
+      __sascLog('Redux present: ' + !!window.Redux);
+    })();
+  </script>
+
+  <!-- Load the Scratch GUI bundle; adjust the src if your file lives elsewhere -->
+  <script id="gui-bundle"
+          src="scratch-gui.js?v=umd-boot-{{DATE}}"
+          onload="window.__sascLog('GUI bundle loaded'); (function boot(){
+            try{
+              const app = document.getElementById('app');
+              const GUI = window.GUI;
+
+              if (!GUI) { window.__sascLog('ERROR: window.GUI is missing even after script load'); return; }
+
+              // Fix react-modal warning (and accessibility)
+              if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
+
+              if (typeof GUI.render === 'function') {
+                GUI.render(app); // canonical boot path if provided by your UMD
+                window.__sascLog('GUI mounted via GUI.render(app)');
+                return;
+              }
+
+              // Compose HOCs and force default project if no id is in the hash
+              let Wrapped = GUI.default || GUI.GUI || GUI;
+              if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
+              if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+              if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
+
+              const props = {
+                isPlayerOnly: false,
+                isFullScreen: false,
+                canUseCloud: false,
+                projectId: (location.hash && /\\d+/.test(location.hash)) ? undefined : '0'
+              };
+
+              const el = window.React.createElement(Wrapped, props);
+              window.ReactDOM.render(el, app);
+              window.__sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=' + props.projectId);
+
+              // Wait until VM has targets before interacting (prevents ‘variables’ error)
+              const timer = setInterval(() => {
+                try {
+                  const vm = window.vm || (GUI && GUI.vm);
+                  if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) {
+                    window.__sascLog('[VM] ready: ' + vm.runtime.targets.length + ' targets');
+                    clearInterval(timer);
+                  }
+                } catch(_) {}
+              }, 250);
+              setTimeout(()=>clearInterval(timer), 15000);
+            }catch(e){
+              window.__sascLog('BOOT ERROR: ' + (e && e.message));
+              console.error(e);
+            }
+          })();"
+          onerror="window.__sascLog('ERROR: failed to load scratch-gui.js (check the path)');">
+  </script>
 </body>
 </html>
