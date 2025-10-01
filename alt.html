@@ -7,16 +7,39 @@
   <link rel="shortcut icon" href="static/favicon.ico"/>
   <title>Scratch 3.0 GUI (alt) — SA SchoolCoding</title>
 
-  <!-- Provide React/ReactDOM/Redux globals BEFORE the GUI bundle -->
-  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+  <!-- React/ReactDOM/Redux UMDs -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js" crossorigin></script>
 
-  <!-- Subpath + asset rewrite shim -->
+  <!-- In-page console -->
+  <style>
+    html, body { height:100%; margin:0; }
+    body { overflow:hidden; background:#0f0f0f; }
+    #sascConsole { position: fixed; left: 8px; bottom: 8px; width: 360px; max-height: 40vh;
+      background: rgba(0,0,0,.8); color: #d8f3dc; font: 12px/1.4 ui-monospace, SFMono-Regular, monospace;
+      border: 1px solid #2a2a2a; border-radius: 8px; padding: 8px; z-index: 999999; overflow:auto; }
+    #sascConsole .warn { color:#ffd166; }
+    #sascConsole .err  { color:#ff6b6b; }
+  </style>
+  <div id="sascConsole"></div>
+  <script>
+    (function(){const b=document.getElementById('sascConsole');
+      function log(t,c){const d=document.createElement('div'); if(c)d.className=c; d.textContent=t; b.appendChild(d); b.scrollTop=b.scrollHeight;}
+      window.SASC={log:(...a)=>log(a.join(' ')),warn:(...a)=>log(a.join(' '),'warn'),err:(...a)=>log(a.join(' '),'err')};
+      SASC.log('[SASC] Console ready (alt)'); SASC.log('[SASC] href:', location.href);
+      addEventListener('click', ev=>SASC.log('[Click]', ev.target?.tagName||'?'));
+      addEventListener('keydown', ev=>SASC.log('[Key]', ev.key));
+    })();
+  </script>
+
+  <!-- Subpath + asset rewrite shim (same as index) -->
   <script>
   (function(){
+    const {log:LOG, warn:WARN} = window.SASC || console;
+
     const origFetch = window.fetch && window.fetch.bind(window);
-    if (!origFetch) return;
+    if (!origFetch) { WARN('[SASC] fetch not found'); return; }
 
     const REPO_SUBPATH = '/sasc-scratch-editor/';
     const BASE = location.origin + REPO_SUBPATH;
@@ -26,12 +49,12 @@
     const SUB_RX    = /^\/(static|chunks)\//;
     const INT_ASSET = /^\/?internalapi\/asset\/([a-f0-9]{32}\.[a-z0-9]+)\/get\/?$/i;
 
-    function toRepo(urlLike){
+    function toRepoURL(urlLike){
       try {
         const u = new URL(urlLike, location.href);
         if (u.origin === location.origin) {
-          if (LIB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
-          if (SUB_RX.test(u.pathname)) u.href = BASE + u.pathname.replace(/^\//,'');
+          if (LIB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
+          if (SUB_RX.test(u.pathname))  u.href = BASE + u.pathname.replace(/^\//,'');
           const m = u.pathname.match(INT_ASSET);
           if (m && m[1]) u.href = LOCAL_ASSETS + m[1];
         }
@@ -45,13 +68,13 @@
 
     window.fetch = function(input, init){
       if (typeof input === 'string') {
-        const fixed = toRepo(input);
-        if (fixed !== input) console.log('[SASC] fetch →', input, '==>', fixed);
+        const fixed = toRepoURL(input);
+        if (fixed !== input) LOG('[SASC] fetch:', input, '→', fixed);
         return origFetch(fixed, init);
       } else if (input && typeof input.url === 'string') {
-        const fixed = toRepo(input.url);
+        const fixed = toRepoURL(input.url);
         if (fixed !== input.url) {
-          console.log('[SASC] fetch(Request) →', input.url, '==>', fixed);
+          LOG('[SASC] fetch(Request):', input.url, '→', fixed);
           input = new Request(fixed, input);
         }
         return origFetch(input, init);
@@ -70,7 +93,7 @@
             const m = String(v).match(INT_ASSET);
             if (m && m[1]) {
               const fixed = LOCAL_ASSETS + m[1];
-              console.log('[SASC] image →', v, '==>', fixed);
+              LOG('[SASC] image:', v, '→', fixed);
               _src = fixed;
               return HTMLImageElement.prototype.setAttribute.call(img, 'src', fixed);
             }
@@ -84,12 +107,35 @@
   })();
   </script>
 
-  <script defer src="scratch-gui.js?v=react16-alt"></script>
+  <!-- Controlled injection of GUI -->
+  <script>
+  (function boot(){
+    const {log:LOG, err:ERR} = window.SASC || console;
 
-  <style>
-    html, body { height:100%; margin:0; }
-    body { overflow:hidden; background:#0f0f0f; }
-  </style>
+    if (!window.React && window.react)      window.React = window.react;
+    if (!window.ReactDOM && window['react-dom']) window.ReactDOM = window['react-dom'];
+    if (!window.Redux && window.redux)      window.Redux = window.redux;
+
+    LOG('[SASC] React present:', !!(window.React), 'version:', window.React && window.React.version);
+    LOG('[SASC] ReactDOM present:', !!(window.ReactDOM));
+    LOG('[SASC] Redux present:', !!(window.Redux));
+
+    function ensureAndLoad(retries=0){
+      if (window.React && window.ReactDOM) {
+        LOG('[SASC] Injecting scratch-gui.js …');
+        const s = document.createElement('script');
+        s.src = 'scratch-gui.js?v=booted-react16-alt';
+        s.onload = () => LOG('[SASC] GUI loaded');
+        s.onerror = () => ERR('[SASC] Failed to load GUI bundle');
+        document.head.appendChild(s);
+        return;
+      }
+      if (retries > 200) return ERR('[SASC] React not found after ~5s');
+      setTimeout(() => ensureAndLoad(retries+1), 25);
+    }
+    ensureAndLoad();
+  })();
+  </script>
 </head>
 <body></body>
 </html>
