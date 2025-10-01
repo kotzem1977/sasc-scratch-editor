@@ -30,114 +30,132 @@
 </pre>
   </div>
 
-  <!-- SASC: asset request logger + resilient local-first fetch -->
-<script>
-(function installSascAssetHook(){
-  if (window.__sascFetchHookInstalled) return;
-  window.__sascFetchHookInstalled = true;
+  <!-- Overlay logger -->
+  <script>
+    window.__sascLog = function(m){
+      try{const z=document.querySelector('#sasc-console pre'); if(z) z.textContent += m + '\n';}catch(_){}
+      console.log('[SASC]', m);
+    };
+    __sascLog('overlay ready');
+  </script>
 
-  const log = (m)=>{ try{const p=document.querySelector('#sasc-console pre'); if(p) p.textContent += m+'\n';}catch(_){} console.log('[SASC]', m); };
+  <!-- React 16.14 UMD + Redux -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
 
-  // Build our local-first order for any internalapi/asset/<md5.ext>/get/ URL
-  function rewriteAssetURL(urlStr){
-    try{
-      const u = new URL(urlStr, location.href);
-      const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?$/i);
-      if (!m) return [urlStr]; // not an asset URL → return original only
-      const md5ext = m[1];
-
-      // Our preferred order:
-      // 1) Local mirror (if present)
-      const base = location.pathname.replace(/\/[^/]*$/, '/'); // …/<repo>/
-      const local = base.replace(/\/$/, '') + '/static/assets/' + md5ext;
-
-      // 2) Primary Scratch CDN
-      const primary = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-
-      // 3) Secondary Scratch CDN
-      const secondary = 'https://cdn.assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-
-      return [local, primary, secondary];
-    }catch(_){ return [urlStr]; }
-  }
-
-  async function tryFetchChain(original, init){
-    const chain = rewriteAssetURL(original);
-    const md5ext = (function(){
-      const m = String(original).match(/internalapi\/asset\/([^/]+)\/get/); return m && m[1];
+  <!-- alias shim + env info -->
+  <script>
+    (function(){
+      if (window.React && !window.react)      { window.react = window.React;      __sascLog('react alias set'); }
+      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; __sascLog('react-dom alias set'); }
+      if (window.Redux && !window.redux)      { window.redux = window.Redux;      __sascLog('redux alias set'); }
+      __sascLog('href: ' + location.href);
+      __sascLog('React present: ' + !!window.React + ' version: ' + (window.React && window.React.version));
+      __sascLog('ReactDOM present: ' + !!window.ReactDOM);
+      __sascLog('Redux present: ' + !!window.Redux);
     })();
-    if (md5ext) log('[ASSET REQUEST] ' + md5ext + ' ← ' + original);
+  </script>
 
-    for (let i=0; i<chain.length; i++){
-      const u = chain[i];
+  <!-- SASC: asset request logger + resilient local-first fetch & XHR -->
+  <script>
+  (function installSascAssetHook(){
+    if (window.__sascFetchHookInstalled) return;
+    window.__sascFetchHookInstalled = true;
+    const log = (m)=>{ try{const p=document.querySelector('#sasc-console pre'); if(p) p.textContent += m+'\n';}catch(_){} console.log('[SASC]', m); };
+
+    function rewriteAssetURL(urlStr){
       try{
-        const r = await window.__sasc_ofetch(u, init);
-        if (r && r.ok) {
-          if (i>0) log('[ASSET FALLBACK OK] ' + u);
-          return r;
+        const u = new URL(urlStr, location.href);
+        const m = u.pathname.match(/internalapi\/asset\/([^/]+\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?$/i);
+        if (!m) return [urlStr];
+        const md5ext = m[1];
+        const base = location.pathname.replace(/\/[^/]*$/, '/');         // /<owner>/<repo>/
+        const local = base.replace(/\/$/, '') + '/static/assets/' + md5ext;
+        const primary = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
+        const secondary = 'https://cdn.assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
+        return [local, primary, secondary];
+      }catch(_){ return [urlStr]; }
+    }
+
+    async function tryFetchChain(original, init){
+      const chain = rewriteAssetURL(original);
+      const m = String(original).match(/internalapi\/asset\/([^/]+)\/get/);
+      const md5ext = m && m[1];
+      if (md5ext) log('[ASSET REQUEST] ' + md5ext + ' ← ' + original);
+
+      for (let i=0;i<chain.length;i++){
+        const u = chain[i];
+        try{
+          const r = await window.__sasc_ofetch(u, init);
+          if (r && r.ok) { if (i>0) log('[ASSET FALLBACK OK] ' + u); return r; }
+          log('[ASSET NOT OK '+(r && r.status)+'] ' + u);
+        }catch(e){ log('[ASSET ERROR] ' + u + ' :: ' + e); }
+      }
+      return window.__sasc_ofetch(original, init);
+    }
+
+    // Hook fetch
+    window.__sasc_ofetch = window.fetch.bind(window);
+    window.fetch = function(input, init){
+      const url = (typeof input === 'string') ? input : (input && input.url);
+      if (url && /internalapi\/asset\//i.test(url)) return tryFetchChain(url, init);
+      return window.__sasc_ofetch(input, init);
+    };
+    log('[fetch hook] installed (assets local-first)');
+
+    // Hook XHR (for older code paths)
+    const OXHR = window.XMLHttpRequest;
+    function XHR(){
+      const x = new OXHR();
+      let openURL = null;
+      const _open = x.open;
+      x.open = function(method, url){ openURL = url; return _open.apply(x, arguments); };
+      const _send = x.send;
+      x.send = function(){
+        if (openURL && /internalapi\/asset\//i.test(openURL)) {
+          const chain = rewriteAssetURL(openURL);
+          let idx = 0;
+          const tryOne = ()=>{
+            const u = chain[idx++]; if (!u) return _send.apply(x, arguments);
+            _open.call(x, 'GET', u);
+            x.addEventListener('load', function onloadOnce(){
+              x.removeEventListener('load', onloadOnce);
+              if (x.status >= 200 && x.status < 300) { if (idx>1) log('[ASSET FALLBACK OK] ' + u); }
+              else { log('[ASSET NOT OK '+x.status+'] ' + u); tryOne(); }
+            });
+            _send.apply(x, arguments);
+          };
+          tryOne(); return;
         }
-        log('[ASSET NOT OK '+r.status+'] ' + u);
-      }catch(e){
-        log('[ASSET ERROR] ' + u + ' :: ' + e);
-      }
+        return _send.apply(x, arguments);
+      };
+      return x;
     }
-    // Last resort: do the original so the error surfaces upstream
-    return window.__sasc_ofetch(original, init);
-  }
+    window.XMLHttpRequest = XHR;
+    log('[xhr hook] installed (assets local-first)');
+  })();
+  </script>
 
-  // Hook fetch
-  window.__sasc_ofetch = window.fetch.bind(window);
-  window.fetch = function(input, init){
-    const url = (typeof input === 'string') ? input : (input && input.url);
-    if (url && /internalapi\/asset\//i.test(url)) {
-      return tryFetchChain(url, init);
-    }
-    return window.__sasc_ofetch(input, init);
-  };
-  log('[fetch hook] installed (assets local-first)');
-
-  // Hook XHR too (some builds still use it)
-  const OXHR = window.XMLHttpRequest;
-  function XHR(){
-    const x = new OXHR();
-    let openURL = null;
-    const _open = x.open;
-    x.open = function(method, url){
-      openURL = url;
-      return _open.apply(x, arguments);
-    };
-    const _send = x.send;
-    x.send = function(){
-      if (openURL && /internalapi\/asset\//i.test(openURL)) {
-        const chain = rewriteAssetURL(openURL);
-        let idx = 0;
-        const tryOne = ()=>{
-          const u = chain[idx++];
-          if (!u) return _send.apply(x, arguments); // give up → original
-          _open.call(x, 'GET', u);
-          x.addEventListener('load', function onloadOnce(){
-            x.removeEventListener('load', onloadOnce);
-            if (x.status >= 200 && x.status < 300) {
-              if (idx>1) log('[ASSET FALLBACK OK] ' + u);
-            } else {
-              log('[ASSET NOT OK '+x.status+'] ' + u);
-              tryOne();
-            }
-          });
-          _send.apply(x, arguments);
-        };
-        tryOne();
-        return; // handled
-      }
-      return _send.apply(x, arguments);
-    };
-    return x;
-  }
-  window.XMLHttpRequest = XHR;
-  log('[xhr hook] installed (assets local-first)');
-
-})();
-</script>
-
+  <!-- Scratch GUI UMD bundle -->
+  <script id="gui-bundle"
+          src="scratch-gui.js?v=umd-boot-{{DATE-index}}"
+          onload="window.__sascLog('GUI bundle loaded');(function boot(){try{
+            const app=document.getElementById('app'); const GUI=window.GUI;
+            if(!GUI){window.__sascLog('ERROR: window.GUI missing after script load');return;}
+            if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
+            if(typeof GUI.render==='function'){ GUI.render(app); window.__sascLog('GUI mounted via GUI.render(app)'); return; }
+            let Wrapped=GUI.default||GUI.GUI||GUI;
+            if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
+            if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
+            if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+            const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+            const el=window.React.createElement(Wrapped, props);
+            window.ReactDOM.render(el, app);
+            window.__sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+props.projectId);
+            const t=setInterval(()=>{try{const vm=window.vm||(GUI&&GUI.vm); if(vm&&vm.runtime&&vm.runtime.targets&&vm.runtime.targets.length){window.__sascLog('[VM] ready: '+vm.runtime.targets.length+' targets'); clearInterval(t);}}catch(_){}} ,250);
+            setTimeout(()=>clearInterval(t),15000);
+          }catch(e){window.__sascLog('BOOT ERROR: '+(e&&e.message)); console.error(e);}})();"
+          onerror="window.__sascLog('ERROR: failed to load scratch-gui.js (check the path)');"></script>
 </body>
 </html>
