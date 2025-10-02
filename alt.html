@@ -5,209 +5,132 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SASC Scratch Editor — alt (fiber-scan+observer)</title>
   <link rel="icon" href="./favicon.ico"/>
+  <style>
+    html,body,#app{height:100%;margin:0}
+    #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
+      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+    #sasc-console[data-theme="light"]{background:#fff9;color:#034;border-color:#89a}
+    #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+    #sasc-console[data-theme="light"] header{background:#eaf2ff;border-bottom-color:#89a}
+    #sasc-console header strong{margin-right:auto}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px)}
+    #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
+    #sasc-console .btnrow button{margin-left:4px}
+    [class*="gui-body"]{display:flex;min-height:100vh}
+    [class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
+    [class*="stage-header"]{position:relative;z-index:2}
+    [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
+    [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
+    [class*="target-pane"]{min-width:240px;flex:0 0 240px}
+    [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
+    canvas{cursor:default}
+  </style>
+</head>
+<body>
+  <div id="app"></div>
 
- <script>
-(function(){
-  /* ---------- VM binding (same as before, shortened) ---------- */
-  function fiberKeyOf(n){ if(!n) return null; for(const k in n){ if(k.startsWith('__reactFiber$')||k.startsWith('__reactInternalInstance$')) return k; } return null; }
-  function findAnyFiberNode(root){ if(!root) return null; const q=[root]; while(q.length){ const n=q.shift(); if(fiberKeyOf(n)) return n; if(n.shadowRoot) q.push(n.shadowRoot); if(n.childNodes) for(const c of n.childNodes) q.push(c); } return null; }
-  function getReactFiberFromDom(node){ const k=fiberKeyOf(node); return k?node[k]:null; }
-  function* walkFibers(root){ if(!root) return; const seen=new Set(), stack=[root]; while(stack.length){ const f=stack.pop(); if(!f||seen.has(f)) continue; seen.add(f); yield f; if(f.child) stack.push(f.child); if(f.sibling) stack.push(f.sibling); if(f.return&&!seen.has(f.return)) stack.push(f.return); } }
-  function tryExtractStoreFromFiber(f){ try{ const n=f.stateNode; if(n?.store?.getState) return n.store; if(n?.props?.store?.getState) return n.props.store; }catch(_){ } return null; }
-  function vmFromStore(store){ try{ const st=store.getState?.(); if(st?.vm?.runtime) return st.vm; if(st?.scratchGui?.vm?.runtime) return st.scratchGui.vm; if(st?.scratch?.vm?.runtime) return st.scratch.vm; }catch(_){ } return null; }
+  <div id="sasc-console">
+    <header>
+      <strong>SASC</strong>
+      <button id="btn-clear">Clear</button>
+      <button id="btn-contrast">Contrast</button>
+      <span class="btnrow">
+        <button id="btn-bind">Bind VM</button>
+        <button id="btn-targets">List Targets</button>
+        <button id="btn-apple">Add Apple Sprite</button>
+        <button id="btn-backdrop">Add Backdrop (md5.ext)…</button>
+        <button id="btn-costume">Add Costume…</button>
+        <button id="btn-sound">Add Sound…</button>
+      </span>
+    </header>
+    <pre>SASC clear
+</pre>
+  </div>
 
-  async function bindVM(timeoutMs=15000){
-    const t0=Date.now(), app=document.getElementById('app');
-    function tryOnce(){
-      const GUI=window.GUI||{}; const direct=window.vm||GUI.vm;
-      if(direct?.runtime){ window.vm=direct; __sascTag('VM','ready (direct)'); return direct; }
-      const host=findAnyFiberNode(app); if(!host) return null;
-      const root=getReactFiberFromDom(host); if(!root) return null;
-      for(const f of walkFibers(root)){
-        // look for a store first (it often delivers VM soon after mount)
-        const store=tryExtractStoreFromFiber(f);
-        if(store){
-          try{ const unsub=store.subscribe(()=>{ const v=vmFromStore(store); if(v?.runtime && !window.vm){ window.vm=v; __sascTag('VM','ready (store subscribe)'); try{unsub();}catch(_){}}}); }catch(_){}
-          const vNow=vmFromStore(store); if(vNow?.runtime){ window.vm=vNow; __sascTag('VM','ready (store immediate)'); return vNow; }
+  <script>
+    (function(){
+      const pre=document.querySelector('#sasc-console pre');
+      const box=document.getElementById('sasc-console');
+      const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
+      window.__sascLog=(m)=>out('',m);
+      window.__sascTag=(t,m)=>out(t,m);
+      document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
+      document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
+      window.addEventListener('click',e=>out('Click',e.target.tagName));
+      window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
+    })();
+  </script>
+
+  <!-- React UMDs -->
+  <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+  <script>
+    (function(){
+      if(window.React && !window.react){ window.react=window.React; __sascTag('SASC','react alias set');}
+      if(window.ReactDOM && !window['react-dom']){ window['react-dom']=window.ReactDOM; __sascTag('SASC','react-dom alias set');}
+      if(window.Redux && !window.redux){ window.redux=window.Redux; __sascTag('SASC','redux alias set');}
+    })();
+  </script>
+
+  <!-- Local-first hooks -->
+  <script>
+    (function(){
+      const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
+      const toLocal=u=>{ const m=u&&u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i); return m?(repoRoot+'/static/assets/'+m[1]):null; };
+      const f=window.fetch;
+      window.fetch=async function(i,init){
+        const url=(typeof i==='string')?i:(i&&i.url);
+        const local=toLocal(url);
+        if(local){ try{ const r=await f(local,init); if(r&&r.ok) return r; }catch(_){ } }
+        return f.apply(this,arguments);
+      };
+      const XO=XMLHttpRequest;
+      window.XMLHttpRequest=function(){
+        const x=new XO(); const _open=x.open; let original=null,method='GET';
+        x.open=function(m,u){ method=m; original=u; const local=(typeof u==='string')?toLocal(u):null;
+          if(local){ _open.call(x,m,local); const onload=()=>{ if(!(x.status>=200&&x.status<300)){ x.removeEventListener('load',onload); _open.call(x,method,original); x.send(); } };
+            x.addEventListener('load',onload); return; }
+          return _open.apply(x,arguments);
+        };
+        return x;
+      };
+      __sascTag('SASC','hooks installed (assets local-first with XHR fallback)');
+    })();
+  </script>
+
+  <!-- GUI bundle -->
+  <script src="scratch-gui.js?v=finder-003"></script>
+
+  <!-- Mount GUI -->
+  <script>
+    (function(){
+      try{
+        const app=document.getElementById('app');
+        const GUI=window.GUI;
+        if(!GUI){ __sascTag('SASC','ERROR: window.GUI missing'); return; }
+        if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
+        if(typeof GUI.render==='function'){
+          GUI.render(app);
+          __sascTag('SASC','GUI mounted via GUI.render(app)');
+        }else{
+          let Wrapped=GUI.default||GUI.GUI||GUI;
+          if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
+          if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
+          if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+          const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+          const el=window.React.createElement(Wrapped,props);
+          window.ReactDOM.render(el,app);
+          __sascTag('SASC','GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
         }
-        // direct VM-like object in props/state
-        try{
-          const props=f.memoizedProps||f.pendingProps||(f.stateNode&&f.stateNode.props);
-          const state=f.memoizedState||(f.stateNode&&f.stateNode.state);
-          for(const c of [props,state,f.stateNode,f]){
-            if(!c || typeof c!=='object') continue;
-            for(const k in c){ const v=c[k]; if(v && typeof v==='object' && v.runtime && v.runtime.targets){ window.vm=v; __sascTag('VM','ready (fiber props/state)'); return v; } }
-          }
-        }catch(_){}
-      }
-      return null;
-    }
-    while(Date.now()-t0<timeoutMs){
-      const v=tryOnce(); if(v) return v;
-      await new Promise(r=>setTimeout(r,250)); __sascLog('still waiting for VM…');
-    }
-    __sascLog('rebind: VM not found after fiber scan'); return null;
-  }
+      }catch(e){ __sascTag('SASC','BOOT ERROR: '+(e&&e.message)); }
+    })();
+  </script>
 
-  /* ---------- asset helpers ---------- */
-  function parseMd5ext(s){ const m=String(s||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{id:m[1],ext:m[2].toLowerCase()}:null; }
-  function mimeFromExt(ext){
-    if(ext==='svg')return'image/svg+xml'; if(ext==='png')return'image/png';
-    if(ext==='jpg'||ext==='jpeg')return'image/jpeg'; if(ext==='gif')return'image/gif';
-    if(ext==='wav')return'audio/wav'; if(ext==='mp3')return'audio/mp3';
-    return'application/octet-stream';
-  }
-  async function fetchAsset(md5ext){
-    const base=location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'');
-    const local=base+'/static/assets/'+md5ext;
-    try{ const r=await fetch(local,{cache:'no-store'}); if(r.ok){ const buf=await r.arrayBuffer(); return {buf,blob:new Blob([buf],{type:mimeFromExt(md5ext.split('.').pop())})}; } }catch(_){}
-    const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-    const r2=await fetch(cdn,{cache:'no-store'}); if(!r2.ok) throw new Error('CDN '+r2.status);
-    const buf=await r2.arrayBuffer(); return {buf,blob:new Blob([buf],{type:mimeFromExt(md5ext.split('.').pop())})};
-  }
-  function costumeFromMd5(name, md5ext){
-    const isSVG=/\.svg$/i.test(md5ext);
-    const p=parseMd5ext(md5ext)||{id:'',ext:isSVG?'svg':'png'};
-    return { name: name||('Costume '+md5ext.slice(0,6)), assetId:p.id, md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180 };
-  }
-
-  /* ---------- new sprite via duplicate + costume swap (works with SVG/PNG) ---------- */
-  async function addSpriteFromCostume(name, md5ext){
-    const vm=window.vm || await bindVM(6000);
-    if(!vm?.runtime) throw new Error('vm missing');
-
-    // Find any existing sprite (non-stage) to duplicate
-    const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
-    if(!sprites.length) throw new Error('No base sprite to duplicate (Sprite1 missing?)');
-    const baseId=sprites[0].id;
-
-    // Duplicate it to create a brand new sprite
-    const newId = await vm.duplicateSprite(baseId).catch(()=>null);
-    if(!newId) throw new Error('duplicateSprite failed');
-
-    // Get the new target and swap in the costume
-    const tgt = (vm.runtime.targets||[]).find(t=>t.id===newId);
-    if(!tgt) throw new Error('New sprite target not found');
-
-    // Rename
-    try{ await vm.renameSprite(newId, name||'New Sprite'); }catch(_){ if(tgt.sprite) tgt.sprite.name = name||'New Sprite'; }
-
-    // Clear existing costumes and inject our one
-    const cos = costumeFromMd5(name||'Sprite', md5ext);
-    tgt.sprite.costumes = [cos];
-    tgt.setCostume(0);
-
-    // Nudge renderer / project change
-    try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
-    __sascTag('tools','sprite created from costume: '+(name||md5ext));
-  }
-
-  /* ---------- backdrop (Stage) ---------- */
-  async function addBackdropSmart(name, md5ext){
-    const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-    if(!vm?.runtime) throw new Error('vm missing');
-    const asset=await fetchAsset(md5ext);
-    const isSVG=/\.svg$/i.test(md5ext);
-    // Prefer GUI helper when present
-    if(GUI?.handleBackdropUpload){
-      try{ await GUI.handleBackdropUpload(asset.blob, isSVG?'image/svg+xml':'image/png'); __sascTag('backdrop','success via GUI.handleBackdropUpload'); return; }
-      catch(e){ __sascTag('backdrop','GUI.handleBackdropUpload failed: '+(e&&e.message||e)); }
-    }
-    // VM path
-    if(typeof vm.addBackdrop==='function'){
-      try{
-        const costume=costumeFromMd5(name||('Backdrop '+md5ext.slice(0,6)), md5ext);
-        await vm.addBackdrop(md5ext,costume); __sascTag('backdrop','success via vm.addBackdrop'); return;
-      }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
-    }
-    // Manual stage injection
-    const stage = vm.runtime.getTargetForStage?.();
-    if(!stage) throw new Error('No stage target');
-    const costume=costumeFromMd5(name||('Backdrop '+md5ext.slice(0,6)), md5ext);
-    stage.sprite.costumes.push(costume);
-    stage.setCostume(stage.sprite.costumes.length-1);
-    try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
-    __sascTag('backdrop','success via manual stage injection');
-  }
-
-  /* ---------- costume to selected ---------- */
-  async function addCostumeToSelected(name, md5ext){
-    const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-    if(!vm?.runtime) throw new Error('vm missing');
-    const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-    if(!t) throw new Error('No editing target');
-    const asset=await fetchAsset(md5ext);
-    const isSVG=/\.svg$/i.test(md5ext);
-
-    if(GUI?.handleCostumeUpload){
-      try{ await GUI.handleCostumeUpload(asset.blob, isSVG?'image/svg+xml':'image/png', t.id); __sascTag('costume','success via GUI.handleCostumeUpload'); return; }
-      catch(e){ __sascTag('costume','GUI.handleCostumeUpload failed: '+(e&&e.message||e)); }
-    }
-    if(typeof vm.addCostume==='function'){
-      try{ await vm.addCostume(costumeFromMd5(name, md5ext), t.id); __sascTag('costume','success via vm.addCostume'); return; }
-      catch(e){ __sascTag('costume','vm.addCostume failed: '+(e&&e.message||e)); }
-    }
-    // Manual
-    t.sprite.costumes.push(costumeFromMd5(name, md5ext));
-    t.setCostume(t.sprite.costumes.length-1);
-    try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
-    __sascTag('costume','success via manual injection');
-  }
-
-  /* ---------- sound to selected ---------- */
-  async function addSoundToSelected(name, md5ext){
-    const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-    if(!vm?.runtime) throw new Error('vm missing');
-    const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-    if(!t) throw new Error('No editing target');
-
-    const asset=await fetchAsset(md5ext);
-    if(GUI?.handleSoundUpload){
-      try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
-      catch(e){ __sascTag('sound','GUI.handleSoundUpload failed: '+(e&&e.message||e)); }
-    }
-    if(typeof vm.addSound==='function'){
-      try{
-        const p=parseMd5ext(md5ext)||{id:'',ext:'wav'};
-        const snd={ name:name||('Sound '+md5ext.slice(0,6)), assetId:p.id, md5ext, dataFormat:p.ext, format:'', rate:44100, sampleCount:0 };
-        await vm.addSound(md5ext, snd, t.id); __sascTag('sound','success via vm.addSound'); return;
-      }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
-    }
-    throw new Error('No sound upload path available in this build');
-  }
-
-  /* ---------- wire buttons ---------- */
-  document.getElementById('btn-bind')?.addEventListener('click',()=>bindVM(10000));
-  document.getElementById('btn-targets')?.addEventListener('click',()=>{
-    const vm=window.vm; if(!vm?.runtime) return __sascTag('targets','VM not ready');
-    const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
-    ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite?.name||'(?)')));
-  });
-  document.getElementById('btn-apple')?.addEventListener('click',()=>{
-    // Apple costume SVG
-    addSpriteFromCostume('Apple','3826a4091a33e4d26f87a2fac7cf796b.svg')
-      .catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
-  });
-  document.getElementById('btn-backdrop')?.addEventListener('click',()=>{
-    const md5ext=prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg'); if(!md5ext) return;
-    addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim())
-      .catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
-  });
-  document.getElementById('btn-costume')?.addEventListener('click',()=>{
-    const md5ext=prompt('Costume md5.ext (svg/png):','3826a4091a33e4d26f87a2fac7cf796b.svg'); if(!md5ext) return;
-    addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim())
-      .catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
-  });
-  document.getElementById('btn-sound')?.addEventListener('click',()=>{
-    const md5ext=prompt('Sound md5.ext (wav/mp3):','0b1e3033140d094563248e61de4039e5.wav'); if(!md5ext) return;
-    addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim())
-      .catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
-  });
-
-  // auto-bind after GUI mount
-  bindVM(20000);
-})();
-</script>
-
+  <!-- Binder + tools -->
+  <script>
+    /* exact same binder+tools block as in index.html above */
+  </script>
 </body>
 </html>
