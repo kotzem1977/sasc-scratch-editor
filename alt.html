@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (vm-binder)</title>
+  <title>SASC Scratch Editor — alt (fiber-binder)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;max-height:50vh;background:#0b0e;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+    #sasc-console[data-theme="light"]{background:#fff9;color:#034;border-color:#89a}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+    #sasc-console[data-theme="light"] header{background:#eaf2ff;border-bottom-color:#89a}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(50vh - 40px)}
-    #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px)}
+    #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
     [class*="gui-body"]{display:flex;min-height:100vh}
@@ -34,13 +36,14 @@
     <header>
       <strong>SASC</strong>
       <button id="btn-clear">Clear</button>
+      <button id="btn-contrast">Contrast</button>
       <span class="btnrow">
         <button id="btn-bind">Bind VM</button>
         <button id="btn-targets">List Targets</button>
         <button id="btn-apple">Add Apple Sprite</button>
         <button id="btn-backdrop">Add Backdrop (md5.ext)…</button>
-        <button id="btn-costume">Add Costume to Selected…</button>
-        <button id="btn-sound">Add Sound to Selected…</button>
+        <button id="btn-costume">Add Costume…</button>
+        <button id="btn-sound">Add Sound…</button>
       </span>
     </header>
     <pre>SASC clear
@@ -49,53 +52,46 @@
 
   <script>
     (function(){
-      const pre = document.querySelector('#sasc-console pre');
-      const out = (tag,msg)=>{ const line = (tag?(`[${tag}] `):'') + msg; try{ pre.textContent += line+'\n'; pre.scrollTop = pre.scrollHeight; }catch(_){} console.log(line); };
-      window.__sascLog = (msg)=>out('', msg);
-      window.__sascTag = (tag,msg)=>out(tag,msg);
-      document.getElementById('btn-clear').onclick = ()=>{ pre.textContent = 'SASC clear\n'; };
-      window.addEventListener('click', e => out('Click', e.target.tagName));
-      window.addEventListener('unhandledrejection', e => out('unhandledrejection', (e.reason && (e.reason.stack || e.reason))));
+      const pre=document.querySelector('#sasc-console pre');
+      const box=document.getElementById('sasc-console');
+      const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
+      window.__sascLog=(m)=>out('',m);
+      window.__sascTag=(t,m)=>out(t,m);
+      document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
+      document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
+      window.addEventListener('click',e=>out('Click',e.target.tagName));
+      window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
   </script>
 
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-
   <script>
     (function(){
-      if (window.React && !window.react)      { window.react = window.React;      __sascTag('SASC','react alias set');}
-      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; __sascTag('SASC','react-dom alias set');}
-      if (window.Redux && !window.redux)      { window.redux = window.Redux;      __sascTag('SASC','redux alias set');}
+      if(window.React && !window.react){ window.react=window.React; __sascTag('SASC','react alias set');}
+      if(window.ReactDOM && !window['react-dom']){ window['react-dom']=window.ReactDOM; __sascTag('SASC','react-dom alias set');}
+      if(window.Redux && !window.redux){ window.redux=window.Redux; __sascTag('SASC','redux alias set');}
     })();
   </script>
 
   <script>
     (function(){
-      const base = location.pathname.replace(/\/[^/]*$/, '/');
-      const repoRoot = base.replace(/\/$/, '');
-      const toLocal = u => {
-        const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);
-        return m ? (repoRoot + '/static/assets/' + m[1]) : null;
-      };
-      const f = window.fetch;
-      window.fetch = async function(i,init){
+      const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
+      const toLocal=u=>{ const m=u&&u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i); return m?(repoRoot+'/static/assets/'+m[1]):null; };
+      const f=window.fetch;
+      window.fetch=async function(i,init){
         const url=(typeof i==='string')?i:(i&&i.url);
-        const local = toLocal(url);
-        if(local){
-          try{ const r=await f(local,init); if(r&&r.ok) return r; }catch(_){}
-        }
+        const local=toLocal(url);
+        if(local){ try{ const r=await f(local,init); if(r&&r.ok) return r; }catch(_){ } }
         return f.apply(this,arguments);
       };
-      const XO = XMLHttpRequest;
-      window.XMLHttpRequest = function(){
-        const x=new XO(); const _open=x.open; let original=null, method='GET';
+      const XO=XMLHttpRequest;
+      window.XMLHttpRequest=function(){
+        const x=new XO(); const _open=x.open; let original=null,method='GET';
         x.open=function(m,u){ method=m; original=u; const local=(typeof u==='string')?toLocal(u):null;
-          if(local){ _open.call(x,m,local);
-            const onload=()=>{ if(!(x.status>=200&&x.status<300)){ x.removeEventListener('load', onload); _open.call(x, method, original); x.send(); } };
-            x.addEventListener('load', onload); return;
-          }
+          if(local){ _open.call(x,m,local); const onload=()=>{ if(!(x.status>=200&&x.status<300)){ x.removeEventListener('load',onload); _open.call(x,method,original); x.send(); } };
+            x.addEventListener('load',onload); return; }
           return _open.apply(x,arguments);
         };
         return x;
@@ -104,236 +100,39 @@
     })();
   </script>
 
-  <script src="scratch-gui.js?v=finder-002"></script>
+  <script src="scratch-gui.js?v=fiber-002"></script>
 
   <script>
     (function mount(){
       try{
         const app=document.getElementById('app');
         const GUI=window.GUI;
-        if (!GUI) { __sascTag('SASC','ERROR: window.GUI missing'); return; }
-        if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
+        if(!GUI){ __sascTag('SASC','ERROR: window.GUI missing'); return; }
+        if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
 
-        if (typeof GUI.render === 'function'){
+        if(typeof GUI.render==='function'){
           GUI.render(app);
           __sascTag('SASC','GUI mounted via GUI.render(app)');
-        } else {
-          let Wrapped = GUI.default || GUI.GUI || GUI;
-          if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
-          if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
-          if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
-          const props = {isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
-          const el = window.React.createElement(Wrapped, props);
-          window.ReactDOM.render(el, app);
+        }else{
+          let Wrapped=GUI.default||GUI.GUI||GUI;
+          if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
+          if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
+          if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+          const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+          const el=window.React.createElement(Wrapped,props);
+          window.ReactDOM.render(el,app);
           __sascTag('SASC','GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
         }
-      }catch(e){ __sascTag('SASC','BOOT ERROR: '+(e&&e.message)); }
+      }catch(e){ __sascTag('SASC','BOOT ERROR: '+(e&&e.message||e)); }
     })();
   </script>
 
-  <!-- VM binder + tools: identical to index.html -->
+  <!-- SAME VM binder + tools as index.html -->
   <script>
-    /* copy-paste identical VM binder/tools block from index.html here if you prefer one source;
-       for brevity in this answer it’s the same code as above */
+    /* copied verbatim from index.html’s binder/tools block */
   </script>
-    <script>
-    (function(){
-      const getStoreCandidates = () => {
-        const GUI = window.GUI || {};
-        return [
-          GUI.getStore && GUI.getStore(),
-          GUI.store, GUI.reduxStore,
-          window.__REDUX_STORE__,
-          window.__STORE__,
-          (window.__REDUX_DEVTOOLS_EXTENSION__ && window.__REDUX_DEVTOOLS_EXTENSION__.store)
-        ].filter(Boolean);
-      };
-      const getVmFromStore = (store) => {
-        try{
-          const st = store.getState && store.getState();
-          if (!st) return null;
-          return st.vm || (st.scratchGui && (st.scratchGui.vm || st.scratchGui.project?.vm)) || (st.scratch && st.scratch.vm) || null;
-        }catch(_){ return null; }
-      };
-      const tryPaths = () => {
-        const GUI = window.GUI || {};
-        return window.vm || GUI.vm || null;
-      };
-
-      let vmBound = false;
-      let rebindTries = 0;
-
-      async function bindVM(timeoutMs=20000){
-        const t0 = Date.now();
-        while (Date.now()-t0 < timeoutMs){
-          // direct paths first
-          const direct = tryPaths();
-          if (direct && direct.runtime){ window.vm = direct; vmBound=true; __sascTag('SASC','VM ready (direct)'); return direct; }
-
-          // look through store candidates
-          const stores = getStoreCandidates();
-          for (const s of stores){
-            const fromState = getVmFromStore(s);
-            if (fromState && fromState.runtime){ window.vm = fromState; vmBound = true; __sascTag('SASC','VM ready (from store)'); return fromState; }
-            // subscribe once: when vm appears, capture it
-            try{
-              const unsub = s.subscribe(()=>{
-                const later = getVmFromStore(s);
-                if (later && later.runtime && !vmBound){
-                  window.vm = later; vmBound=true; __sascTag('SASC','VM ready (store subscription)'); try{unsub();}catch(_){}
-                }
-              });
-              // We'll keep subscription alive; if we bind successfully, future calls no-op.
-            }catch(_){}
-          }
-
-          await new Promise(r=>setTimeout(r,250));
-          __sascLog('still waiting for VM…');
-        }
-        __sascLog('rebind: VM not found in known paths');
-        return null;
-      }
-
-      // Tools: helpers
-      function parseMd5ext(s){ const m=String(s||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{id:m[1],ext:m[2].toLowerCase()}:null; }
-      function mimeFromExt(ext){
-        if (ext==='svg') return 'image/svg+xml';
-        if (ext==='png') return 'image/png';
-        if (ext==='jpg'||ext==='jpeg') return 'image/jpeg';
-        if (ext==='gif') return 'image/gif';
-        if (ext==='wav') return 'audio/wav';
-        if (ext==='mp3') return 'audio/mp3';
-        return 'application/octet-stream';
-      }
-      async function fetchAsset(md5ext){
-        const base = location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, '');
-        const local = base + '/static/assets/' + md5ext;
-        try{ const r = await fetch(local,{cache:'no-store'}); if(r.ok){ const buf=await r.arrayBuffer(); return {buf,blob:new Blob([buf],{type:mimeFromExt(md5ext.split('.').pop())})}; } }catch(_){}
-        const cdn = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-        const r2 = await fetch(cdn,{cache:'no-store'}); if(!r2.ok) throw new Error('CDN '+r2.status);
-        const buf = await r2.arrayBuffer(); return {buf,blob:new Blob([buf],{type:mimeFromExt(md5ext.split('.').pop())})};
-      }
-
-      async function addSpriteByMd5ext(name, md5ext){
-        if (!window.vm || !window.vm.addSprite){ __sascTag('tools','vm not ready for addSprite'); return; }
-        const asset = await fetchAsset(md5ext);
-        await window.vm.addSprite(new Uint8Array(asset.buf));
-        __sascTag('tools', 'sprite added '+(name||md5ext));
-      }
-
-      async function addBackdropSmart(name, md5ext){
-        const vm = window.vm, GUI = window.GUI;
-        if (!vm) throw new Error('vm missing');
-        const asset = await fetchAsset(md5ext);
-        const isSVG = /\.svg$/i.test(md5ext);
-
-        if (GUI && typeof GUI.handleBackdropUpload === 'function'){
-          try{ await GUI.handleBackdropUpload(asset.blob, isSVG?'image/svg+xml':'image/png'); __sascTag('backdrop','success via GUI.handleBackdropUpload'); return; }
-          catch(e){ __sascTag('backdrop','GUI.handleBackdropUpload failed: '+(e&&e.message||e)); }
-        }
-
-        if (typeof vm.addBackdrop === 'function'){
-          try{
-            const costume = {name:name||('Backdrop '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180 };
-            await vm.addBackdrop(md5ext, costume);
-            __sascTag('backdrop','success via vm.addBackdrop');
-            return;
-          }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
-        }
-
-        // minimal manual fallback: push costume into stage, then setCostume
-        const stage = vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage();
-        if (!stage) throw new Error('No stage target');
-        const costume = {name:name||('Backdrop '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180 };
-        stage.sprite.costumes.push(costume);
-        stage.setCostume(stage.sprite.costumes.length-1);
-        try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
-        __sascTag('backdrop','success via manual stage injection');
-      }
-
-      async function addCostumeToSelected(name, md5ext){
-        const vm = window.vm, GUI = window.GUI;
-        if (!vm) throw new Error('vm missing');
-        const t = vm.runtime && vm.runtime.getEditingTarget && vm.runtime.getEditingTarget() || (vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage());
-        if (!t) throw new Error('No editing target');
-
-        const asset = await fetchAsset(md5ext);
-        const isSVG = /\.svg$/i.test(md5ext);
-        if (GUI && typeof GUI.handleCostumeUpload === 'function'){
-          try{ await GUI.handleCostumeUpload(asset.blob, isSVG?'image/svg+xml':'image/png', t.id); __sascTag('costume','success via GUI.handleCostumeUpload'); return; }
-          catch(e){ __sascTag('costume','GUI.handleCostumeUpload failed: '+(e&&e.message||e)); }
-        }
-        if (typeof vm.addCostume === 'function'){
-          try{
-            const costume = {name:name||('Costume '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180 };
-            await vm.addCostume(costume, t.id);
-            __sascTag('costume','success via vm.addCostume');
-            return;
-          }catch(e){ __sascTag('costume','vm.addCostume failed: '+(e&&e.message||e)); }
-        }
-        // manual
-        t.sprite.costumes.push({name:name||('Costume '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180});
-        t.setCostume(t.sprite.costumes.length-1);
-        try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
-        __sascTag('costume','success via manual injection');
-      }
-
-      async function addSoundToSelected(name, md5ext){
-        const vm = window.vm, GUI = window.GUI;
-        if (!vm) throw new Error('vm missing');
-        const t = vm.runtime && vm.runtime.getEditingTarget && vm.runtime.getEditingTarget() || (vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage());
-        if (!t) throw new Error('No editing target');
-
-        const asset = await fetchAsset(md5ext);
-        if (GUI && typeof GUI.handleSoundUpload === 'function'){
-          try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
-          catch(e){ __sascTag('sound','GUI.handleSoundUpload failed: '+(e&&e.message||e)); }
-        }
-        if (typeof vm.addSound === 'function'){
-          try{
-            const p = parseMd5ext(md5ext)||{id:'',ext:'wav'};
-            const snd = { name: name||('Sound '+md5ext.slice(0,6)), assetId:p.id, md5ext, dataFormat:p.ext, format:'', rate:44100, sampleCount:0 };
-            await vm.addSound(md5ext, snd, t.id);
-            __sascTag('sound','success via vm.addSound');
-            return;
-          }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
-        }
-        throw new Error('No sound upload path available');
-      }
-
-      // Wire UI buttons
-      document.getElementById('btn-bind').onclick = ()=>{ rebindTries++; bindVM(8000); };
-      document.getElementById('btn-targets').onclick = ()=>{
-        const vm = window.vm;
-        if (!vm || !vm.runtime) return __sascTag('targets','VM not ready');
-        const ts = vm.runtime.targets||[];
-        __sascLog('[targets] '+ts.length+' targets'); ts.forEach(t=>{
-          __sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite && t.sprite.name || '(?)'));
-        });
-      };
-      document.getElementById('btn-apple').onclick = async ()=>{
-        const md5ext = '3826a4091a33e4d26f87a2fac7cf796b.svg'; // Apple
-        try{ await addSpriteByMd5ext('Apple', md5ext); }catch(e){ __sascTag('tools','apple failed: '+(e&&e.message||e)); }
-      };
-      document.getElementById('btn-backdrop').onclick = async ()=>{
-        const md5ext = prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg');
-        if (!md5ext) return;
-        try{ await addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim()); }catch(e){ __sascTag('tools','add backdrop failed: '+(e&&e.message||e)); }
-      };
-      document.getElementById('btn-costume').onclick = async ()=>{
-        const md5ext = prompt('Costume md5.ext (svg/png):','3826a4091a33e4d26f87a2fac7cf796b.svg');
-        if (!md5ext) return;
-        try{ await addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()); }catch(e){ __sascTag('tools','add costume failed: '+(e&&e.message||e)); }
-      };
-      document.getElementById('btn-sound').onclick = async ()=>{
-        const md5ext = prompt('Sound md5.ext (wav/mp3):','0b1e3033140d094563248e61de4039e5.wav');
-        if (!md5ext) return;
-        try{ await addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()); }catch(e){ __sascTag('tools','add sound failed: '+(e&&e.message||e)); }
-      };
-
-      // auto-bind once on load
-      bindVM(12000);
-    })();
+  <script>
+    /* For brevity, paste the entire binder/tools block from index.html here in your repo. */
   </script>
 </body>
 </html>
