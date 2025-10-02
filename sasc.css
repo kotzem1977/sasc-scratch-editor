@@ -1,0 +1,31 @@
+html,body,#app{height:100%;margin:0}
+#app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+
+/* SASC console — readable light theme by default */
+#sasc-console{
+  position:fixed;left:10px;bottom:10px;width:420px;max-height:66vh;
+  background:#fff;border:1px solid #ccd;border-radius:10px;z-index:99999;
+  font:12px/1.35 ui-monospace,Consolas,monospace;color:#111;box-shadow:0 6px 22px rgba(0,0,0,.22);
+}
+#sasc-console[data-theme="dark"]{background:#0b0e12;color:#dfe7ff;border-color:#334}
+#sasc-console header{padding:6px 8px;border-bottom:1px solid #e3e6ef}
+#sasc-console[data-theme="dark"] header{border-bottom-color:#223}
+#sasc-console header strong{font-weight:700;display:block;margin-bottom:6px}
+#sasc-console header .row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+#sasc-console button{
+  all:unset;cursor:pointer;color:inherit;padding:4px 8px;border:1px solid currentColor;border-radius:6px;
+}
+#sasc-console pre{
+  margin:0;padding:8px 10px;white-space:pre-wrap;overflow:auto;max-height:calc(66vh - 140px); background:#fafbff;
+}
+#sasc-console[data-theme="dark"] pre{background:#0d1117}
+
+/* Minimal layout shim so GUI renders */
+[class*="gui-body"]{display:flex;min-height:100vh}
+[class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
+[class*="stage-header"]{position:relative;z-index:2}
+[class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
+[class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
+[class*="target-pane"]{min-width:240px;flex:0 0 240px}
+[class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
+canvas{cursor:default}
