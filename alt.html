@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (vm-zip-inject)</title>
+  <title>SASC Scratch Editor — alt (vm-zip-inject v2)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -172,31 +172,43 @@
 
     let waited=0; const t=setInterval(()=>{ const vm=exposeVM(); if(vm){clearInterval(t);} else if((waited+=500)>30000){ log('[doctor] VM not found after 30s'); clearInterval(t);} },500);
 
+    function parseAsset(md5ext){
+      const m = String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i);
+      return m ? {assetId:m[1], ext:m[2].toLowerCase()} : null;
+    }
     function makeSpriteJSON(name, md5ext){
+      const p = parseAsset(md5ext);
+      const dataFormat = (p && p.ext==='svg') ? 'svg' : (p?p.ext:'png');
+      const assetId = p ? p.assetId : '';
       return {
         name, isStage:false, variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
         currentCostume:0,
-        costumes:[{name, md5ext, dataFormat: md5ext.toLowerCase().endsWith('.svg')?'svg':'png', rotationCenterX:0, rotationCenterY:0}],
+        costumes:[{ name, assetId, md5ext, dataFormat, rotationCenterX:0, rotationCenterY:0 }],
         sounds:[], volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90, draggable:false, rotationStyle:"all around"
       };
     }
     async function addSpriteViaZip(spriteName, md5ext){
       try{
         const vm = window.vm;
-        if (!vm || !vm.addSprite) throw new Error('vm.addSprite not available');
+        if (!vm) throw new Error('vm missing');
+        (window.__sascLog||console.log)('[inject] vm.addSprite typeof = ' + (typeof vm.addSprite));
+        if (typeof vm.addSprite !== 'function') throw new Error('vm.addSprite not available');
+
         const assetURL = 'static/assets/' + md5ext;
         const resp = await fetch(assetURL, {cache:'no-store'});
         if (!resp.ok) throw new Error('asset fetch ' + resp.status + ' for ' + md5ext);
         const assetBuf = await resp.arrayBuffer();
+
         const spriteJSON = makeSpriteJSON(spriteName, md5ext);
         const zip = new JSZip();
         zip.file('sprite.json', JSON.stringify(spriteJSON, null, 2));
         zip.file(md5ext, assetBuf);
-        const u8 = await zip.generateAsync({type:'uint8array', compression:'STORE'});
-        await vm.addSprite(u8);
-        (window.__sascLog||console.log)('[inject] sprite added via vm.addSprite: ' + spriteName + ' ('+md5ext+')');
+        const arrBuf = await zip.generateAsync({type:'arraybuffer', compression:'STORE'});
+
+        const result = await vm.addSprite(arrBuf);
+        (window.__sascLog||console.log)('[inject] sprite added via vm.addSprite: ' + spriteName + ' ('+md5ext+') → ' + JSON.stringify(result||{}));
       } catch(e){
-        (window.__sascLog||console.error)('[inject] failed to add sprite "'+spriteName+'": '+(e && e.message));
+        (window.__sascLog||console.error)('[inject] failed to add sprite "'+spriteName+'": ' + (e && (e.stack || e.message || e)));
       }
     }
 
