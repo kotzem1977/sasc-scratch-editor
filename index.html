@@ -294,5 +294,197 @@
       addSpriteViaZip('Blue Sky', 'e7c147730f19d284bcd7b3f00af19bb6.svg');
   })();
   </script>
+  <script>
+/* SASC add-backdrop addon (multi-strategy) */
+(function(){
+  const log = (m)=> (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
+
+  // Add two buttons to your existing console
+  function ensureButtons(){
+    const header = document.querySelector('#sasc-console header .btnrow') || document.querySelector('#sasc-console header');
+    if (!header || document.getElementById('btn-add-sky-backdrop')) return;
+    const b1 = document.createElement('button');
+    b1.id = 'btn-add-sky-backdrop';
+    b1.textContent = 'Add Blue Sky as Backdrop';
+    const b2 = document.createElement('button');
+    b2.id = 'btn-add-backdrop-prompt';
+    b2.textContent = 'Add Backdrop (md5.ext)…';
+    header.appendChild(b1);
+    header.appendChild(b2);
+  }
+
+  ensureButtons();
+
+  // Helpers
+  function parseAsset(md5ext){
+    const m = String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i);
+    return m ? {assetId:m[1], ext:m[2].toLowerCase()} : null;
+  }
+  function makeCostumeObject(name, md5ext, dataFormat){
+    const p = parseAsset(md5ext);
+    return {
+      name,
+      assetId: p ? p.assetId : '',
+      md5ext,
+      dataFormat: dataFormat || (p && p.ext === 'svg' ? 'svg' : (p ? p.ext : 'png')),
+      // sensible stage centers (480x360)
+      rotationCenterX: 240,
+      rotationCenterY: 180
+    };
+  }
+  function stageTarget(vm){
+    return vm && vm.runtime && vm.runtime.getTargetForStage ? vm.runtime.getTargetForStage() : null;
+  }
+  function repoBase(){
+    return location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, '');
+  }
+
+  async function addBackdropSmart(name, md5ext){
+    const vm = window.vm;
+    const GUI = window.GUI;
+    if (!vm) { log('[backdrop] VM missing'); return; }
+
+    // Fetch the asset (SVG/PNG) as Blob/ArrayBuffer for various strategies
+    const localURL = repoBase() + '/static/assets/' + md5ext;
+    let resp;
+    try {
+      resp = await fetch(localURL, {cache:'no-store'});
+      if (!resp.ok) throw new Error('asset fetch '+resp.status);
+    } catch(e){
+      // fallback to CDN
+      const cdn = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
+      log('[backdrop] local fetch failed → CDN '+cdn);
+      resp = await fetch(cdn, {cache:'no-store'});
+      if (!resp.ok) { log('[backdrop] CDN fetch failed '+resp.status); return; }
+    }
+
+    const contentType = resp.headers.get('content-type') || '';
+    const isSVG = /\.svg$/i.test(md5ext) || contentType.includes('svg');
+    const blob = await resp.blob();
+    const arrBuf = await resp.arrayBuffer();
+    const costume = makeCostumeObject(name, md5ext, isSVG ? 'svg' : 'png');
+
+    // Strategy 1: GUI handleBackdropUpload (most “official” if exposed)
+    try {
+      if (GUI && typeof GUI.handleBackdropUpload === 'function') {
+        log('[backdrop] trying GUI.handleBackdropUpload');
+        await GUI.handleBackdropUpload(blob, isSVG ? 'image/svg+xml' : 'image/png');
+        log('[backdrop] success via GUI.handleBackdropUpload');
+        return;
+      } else {
+        log('[backdrop] GUI.handleBackdropUpload not available');
+      }
+    } catch(e){ log('[backdrop] GUI.handleBackdropUpload failed: ' + (e && (e.stack||e.message||e))); }
+
+    // Strategy 2: vm.addBackdrop (some builds expose this)
+    try {
+      if (typeof vm.addBackdrop === 'function') {
+        log('[backdrop] trying vm.addBackdrop');
+        await vm.addBackdrop(md5ext, costume);
+        log('[backdrop] success via vm.addBackdrop');
+        return;
+      } else {
+        log('[backdrop] vm.addBackdrop not available');
+      }
+    } catch(e){ log('[backdrop] vm.addBackdrop failed: ' + (e && (e.stack||e.message||e))); }
+
+    // Strategy 3: vm.addCostume onto Stage (multiple signatures observed)
+    try {
+      if (typeof vm.addCostume === 'function') {
+        const stage = stageTarget(vm);
+        if (!stage) throw new Error('No stage target');
+        // Try signature A: (costumeObject, targetId)
+        try {
+          log('[backdrop] trying vm.addCostume(costume, stage.id)');
+          await vm.addCostume(costume, stage.id);
+          log('[backdrop] success via vm.addCostume(costume, targetId)');
+          return;
+        } catch(eA){
+          log('[backdrop] signature A failed: ' + (eA && (eA.message||eA)));
+          // Try signature B: (md5ext, costumeObject, targetId)
+          try {
+            log('[backdrop] trying vm.addCostume(md5ext, costume, stage.id)');
+            await vm.addCostume(md5ext, costume, stage.id);
+            log('[backdrop] success via vm.addCostume(md5ext, costume, targetId)');
+            return;
+          } catch(eB){
+            log('[backdrop] signature B failed: ' + (eB && (eB.message||eB)));
+          }
+        }
+      } else {
+        log('[backdrop] vm.addCostume not available');
+      }
+    } catch(e){ log('[backdrop] vm.addCostume route failed: ' + (e && (e.stack||e.message||e))); }
+
+    // Strategy 4 (last resort): Manual Stage costume injection
+    try {
+      log('[backdrop] trying manual Stage costume injection');
+      const st = stageTarget(vm);
+      if (!st) throw new Error('No Stage target');
+
+      // push asset into storage first so renderer can find it
+      const storage = vm.runtime && vm.runtime.storage;
+      if (!storage) throw new Error('No VM storage');
+
+      const p = parseAsset(md5ext);
+      const ext = p ? p.ext : 'svg';
+      const assetType = (ext === 'svg')
+        ? storage.AssetType.ImageVector
+        : storage.AssetType.ImageBitmap;
+
+      const data = new Uint8Array(arrBuf);
+      const asset = storage.createAsset(assetType, ext, data, p ? p.assetId : '');
+
+      // add costume object to stage sprite & select it
+      st.sprite.costumes.push(costume);
+      const newIndex = st.sprite.costumes.length - 1;
+
+      // renderer skin (SVG/bitmap)
+      if (vm.renderer) {
+        if (isSVG && vm.renderer.createSVGSkin) {
+          const skinId = vm.renderer.createSVGSkin(await blob.text());
+          st.setCostume(newIndex);
+          vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
+        } else if (!isSVG && vm.renderer.createBitmapSkin) {
+          const imageBitmap = await createImageBitmap(blob);
+          const skinId = vm.renderer.createBitmapSkin(imageBitmap, 1);
+          st.setCostume(newIndex);
+          vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
+        } else {
+          // fallback: just set costume; renderer may resolve via storage
+          st.setCostume(newIndex);
+        }
+      } else {
+        st.setCostume(newIndex);
+      }
+
+      // ask GUI to refresh if Redux exists
+      try { vm.runtime.emit('PROJECT_CHANGED'); } catch(_){}
+      log('[backdrop] success via manual Stage injection (index '+newIndex+')');
+      return;
+    } catch(e){
+      log('[backdrop] manual injection failed: ' + (e && (e.stack||e.message||e)));
+    }
+
+    log('[backdrop] all strategies failed');
+  }
+
+  async function addBlueSkyBackdrop(){
+    await addBackdropSmart('Blue Sky', 'e7c147730f19d284bcd7b3f00af19bb6.svg');
+  }
+  async function addBackdropPrompt(){
+    const md5ext = prompt('Enter md5.ext for backdrop (e.g. 1c470b52... .png or ... .svg):');
+    if (!md5ext) return;
+    const name = prompt('Backdrop name:', 'Backdrop '+md5ext.slice(0,6)) || 'Backdrop';
+    await addBackdropSmart(name, md5ext.trim());
+  }
+
+  const btn1 = document.getElementById('btn-add-sky-backdrop');
+  const btn2 = document.getElementById('btn-add-backdrop-prompt');
+  if (btn1) btn1.onclick = addBlueSkyBackdrop;
+  if (btn2) btn2.onclick = addBackdropPrompt;
+})();
+</script>
+
 </body>
 </html>
