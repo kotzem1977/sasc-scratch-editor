@@ -7,10 +7,21 @@
   <link rel="icon" href="./favicon.ico"/>
   <link rel="stylesheet" href="./sasc.css?v=1"/>
 
-  <!-- React UMDs -->
+  <!-- React UMDs (must come before scratch-gui.js) -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+
+  <!-- 🔧 Critical: alias globals BEFORE loading scratch-gui.js -->
+  <script>
+    (function(){
+      if (window.React && !window.react) { window.react = window.React; }
+      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; }
+      if (window.Redux && !window.redux) { window.redux = window.Redux; }
+      // Small log so we can see this ran even before SASC console
+      try { console.log('[BOOT] aliases pre-GUI set'); } catch(_) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
@@ -66,7 +77,7 @@
   <script src="./sasc-console.js?v=1"></script>
   <script src="./hooks-local-first.js?v=1"></script>
 
-  <!-- Your GUI bundle -->
+  <!-- Your GUI bundle (now React aliases are already set) -->
   <script src="scratch-gui.js?v=modular-001"></script>
 
   <!-- Mount GUI + VM binder -->
