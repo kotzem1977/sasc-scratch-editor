@@ -10,19 +10,18 @@
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
-    /* SASC console */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
-      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
-    /* clearer light theme */
-    #sasc-console[data-theme="light"]{background:#fff;color:#111;border-color:#89a}
-    #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
-    #sasc-console[data-theme="light"] header{background:#f4f7ff;border-bottom-color:#89a}
+    /* SASC console (light by default) */
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:52vh;background:#fff;color:#111;
+      font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #89a;border-radius:8px;z-index:99999}
+    #sasc-console:not([data-theme="light"]){background:#0b0e;color:#0ff;border-color:#044}
+    #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#f4f7ff;border-bottom:1px solid #89a;border-radius:8px 8px 0 0}
+    #sasc-console:not([data-theme="light"]) header{background:#022;border-bottom-color:#044}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px); user-select:text}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px);user-select:text}
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
-    /* Minimal layout shim so GUI renders */
+    /* Minimal layout shim so GUI renders even with custom builds */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
     [class*="stage-header"]{position:relative;z-index:2}
@@ -36,8 +35,8 @@
 <body>
   <div id="app"></div>
 
-  <!-- SASC console -->
-  <div id="sasc-console">
+  <!-- SASC console (light by default) -->
+  <div id="sasc-console" data-theme="light">
     <header>
       <strong>SASC</strong>
       <button id="btn-clear">Clear</button>
@@ -65,18 +64,18 @@
       const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
       window.__sascLog=(m)=>out('',m);
       window.__sascTag=(t,m)=>out(t,m);
+
       document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
       document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
+
       document.getElementById('btn-copy').onclick=async()=>{
         try{
           await navigator.clipboard.writeText(pre.textContent);
           out('SASC','log copied to clipboard');
         }catch(_){
-          // Fallback: select and execCommand
           const r=document.createRange(); r.selectNodeContents(pre);
           const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
-          const ok=document.execCommand('copy');
-          s.removeAllRanges();
+          const ok=document.execCommand('copy'); s.removeAllRanges();
           out('SASC', ok?'log copied (fallback)':'copy failed');
         }
       };
@@ -89,6 +88,7 @@
         setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
         out('SASC','log saved as sasc-log.txt');
       };
+
       window.addEventListener('click',e=>out('Click',e.target.tagName));
       window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
@@ -132,7 +132,7 @@
     })();
   </script>
 
-  <!-- 4) Your GUI bundle -->
+  <!-- 4) Your GUI bundle (bump the query if you need to hard-refresh caches) -->
   <script src="scratch-gui.js?v=finder-003"></script>
 
   <!-- 5) Mount the GUI -->
@@ -289,13 +289,13 @@
       emitUiUpdates(vm);
     }
 
-    /* ---------- robust sprite creation (handles builds that don't return id) ---------- */
+    /* ---------- robust sprite creation (blank sprite + apply Apple) ---------- */
     async function waitForNewSprite(vm, prevCount, name, timeout=2000){
       const t0=performance.now();
       while(performance.now()-t0<timeout){
         const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
         if(sprites.length>prevCount){
-          const byName=sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === (name||'New Sprite'));
+          const byName=sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === name);
           return byName || sprites[sprites.length-1];
         }
         await new Promise(r=>setTimeout(r,50));
@@ -303,53 +303,42 @@
       return null;
     }
 
-    async function addSpriteFromCostume(name, md5ext){
+    async function addAppleAsNewSprite(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
+
+      const md5ext = '3826a4091a33e4d26f87a2fac7cf796b.svg';
+      const name = 'Apple';
+      const spriteJson = {
+        isStage:false,
+        name,
+        variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+        currentCostume:0,
+        costumes:[{
+          name, assetId: md5ext.slice(0,32), md5ext, dataFormat:'svg',
+          rotationCenterX:240, rotationCenterY:180
+        }],
+        sounds:[],
+        volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+        draggable:false, rotationStyle:"all around"
+      };
+
+      const before = (vm.runtime.targets||[]).filter(t=>!t.isStage).length;
+      try{ await vm.addSprite(JSON.stringify(spriteJson)); }catch(e){ __sascTag('tools','addSprite threw: '+(e&&e.message||e)); }
+
+      let tgt = await waitForNewSprite(vm, before, name, 2000);
+      if(!tgt){
+        __sascTag('tools','blank sprite did not appear; falling back to costume on selected sprite');
+        return addCostumeToSelected(name, md5ext);
+      }
+
+      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name = name; }
       const asset = await fetchAsset(md5ext);
-
-      const before=(vm.runtime.targets||[]).filter(t=>!t.isStage).length;
-      if (typeof vm.addSprite === 'function') {
-        try{
-          await vm.addSprite(JSON.stringify({
-            isStage:false,
-            name: name || 'New Sprite',
-            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
-            currentCostume:0,
-            costumes:[costumeFromMd5(name, md5ext)],
-            sounds:[],
-            volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
-            draggable:false, rotationStyle:"all around"
-          }));
-          const tgt = await waitForNewSprite(vm, before, name);
-          if (tgt){
-            await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
-            __sascTag('tools','sprite created via vm.addSprite');
-            return;
-          }
-        }catch(e){ __sascTag('tools','addSprite path failed: '+(e&&e.message||e)); }
-      }
-
-      const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
-      if (sprites.length && typeof vm.duplicateSprite === 'function'){
-        const before2=sprites.length;
-        const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(()=>false);
-        if (ok){
-          const tgt = await waitForNewSprite(vm, before2, null);
-          if (tgt){
-            try{ await vm.renameSprite(tgt.id, name||'New Sprite'); }catch(_){ if(tgt.sprite) tgt.sprite.name=name||'New Sprite'; }
-            await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
-            __sascTag('tools','sprite created via duplicate+swap');
-            return;
-          }
-        }
-        __sascTag('tools','duplicateSprite failed or no new target appeared');
-      }
-
-      throw new Error('No sprite creation path available in this build');
+      await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
+      __sascTag('tools','sprite created via addSprite(+apply)');
     }
 
-    /* ---------- costume (manual path preferred) ---------- */
+    /* ---------- user actions ---------- */
     async function addCostumeToSelected(name, md5ext){
       const vm = window.vm || await bindVM(6000), GUI = window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -366,24 +355,21 @@
           return;
         }catch(e){ __sascTag('costume','GUI helper failed: '+(e&&e.message||e)); }
       }
-
       await applyCostumeToTarget(vm, t, md5ext, asset, {replaceAll:false, name});
       __sascTag('costume','success via manual injection');
     }
 
-    /* ---------- backdrop (manual so it always shows) ---------- */
     async function addBackdropSmart(name, md5ext){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
       const stage = vm.runtime.getTargetForStage?.();
       if(!stage) throw new Error('No stage target');
-      const asset = await fetchAsset(md5ext);
 
+      const asset = await fetchAsset(md5ext);
       await applyCostumeToTarget(vm, stage, md5ext, asset, {replaceAll:false, name});
       __sascTag('backdrop','success via manual stage injection');
     }
 
-    /* ---------- sounds (GUI path only) ---------- */
     async function addSoundToSelected(name, md5ext){
       const vm=window.vm || await bindVM(6000), GUI=window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -405,7 +391,9 @@
       const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
       ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite?.name||'(?)')));
     };
-    document.getElementById('btn-apple').onclick=()=>addSpriteFromCostume('Apple','3826a4091a33e4d26f87a2fac7cf796b.svg').catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
+    document.getElementById('btn-apple').onclick=()=>{
+      addAppleAsNewSprite().catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
+    };
     document.getElementById('btn-backdrop').onclick=()=>{
       const md5ext=prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg'); if(!md5ext) return;
       addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
@@ -415,7 +403,6 @@
       addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
     };
     document.getElementById('btn-sound').onclick=()=>{
-      // Use the built-in Meow sound to avoid 404s on GitHub Pages
       const md5ext=prompt('Sound md5.ext (wav/mp3):','83c36d806dc92327b9e7049a565c6bff.wav'); if(!md5ext) return;
       addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
     };
