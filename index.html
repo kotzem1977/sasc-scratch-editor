@@ -3,23 +3,39 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (clean final+shim+doctor)</title>
-
-  <!-- repo-scoped favicon -->
+  <title>SASC Scratch Editor — index (doctor+toolbar)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    /* SASC console overlay */
     #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
+    /* stage/controls safety */
+    [class*="stage-wrapper"]{position:relative;z-index:0}
+    [class*="stage-header"]{position:relative;z-index:2}
+    [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
+    canvas{cursor:default}
+    /* editor columns */
+    [class*="gui-body"]{display:flex;min-height:100vh}
+    [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
+    [class*="target-pane"]{min-width:240px;flex:0 0 240px}
+    [class*="stage-wrapper"]{flex:0 0 auto}
+    /* modal on top */
+    [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
+    [class*="sprite-selector"] img{display:block}
+    [class*="sprite-selector_add-button"],[class*="stage-selector_add-button"]{pointer-events:auto}
+
+    /* SASC toolbar */
+    #sasc-tools{position:fixed;top:10px;left:10px;z-index:100000;background:#021a;backdrop-filter:blur(2px);
+      border:1px solid #044;border-radius:8px;color:#0ff;font:12px ui-monospace;display:flex;gap:6px;padding:6px}
+    #sasc-tools button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
   </style>
 
-  <!-- CSS loader: try manifest; if 404s, rely on shim below -->
+  <!-- try to pull demo CSS; if it 404s, our shim above keeps layout functional -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -39,25 +55,6 @@
       .catch(()=>{ console.warn('[SASC] demo CSS manifest/links not available; relying on shim'); });
   })();
   </script>
-
-  <!-- Minimal CSS shim: fixes stage layout, z-index of flags/modals, hand cursor, basic panes -->
-  <style id="sasc-css-shim">
-    /* Stage / controls stacking */
-    [class*="stage-wrapper"]{position:relative;z-index:0}
-    [class*="stage-header"]{position:relative;z-index:2}
-    [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
-    canvas{cursor:default}
-    /* Editor columns */
-    [class*="gui-body"]{display:flex;min-height:100vh}
-    [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
-    [class*="target-pane"]{min-width:240px;flex:0 0 240px}
-    [class*="stage-wrapper"]{flex:0 0 auto}
-    /* Library modal above stage */
-    [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
-    [class*="sprite-selector"] img{display:block}
-    /* Sprite/backdrop add buttons clickable */
-    [class*="sprite-selector_add-button"], [class*="stage-selector_add-button"]{pointer-events:auto}
-  </style>
 </head>
 <body>
   <div id="app"></div>
@@ -73,10 +70,10 @@
   </div>
   <script>
     (function(){
-      const pre = document.querySelector('#sasc-console pre');
-      window.__sascLog = (m)=>{ try{ pre.textContent += m+'\n'; pre.scrollTop = pre.scrollHeight; }catch(_){} console.log(m); };
-      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
-      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
+      const pre=document.querySelector('#sasc-console pre');
+      window.__sascLog=(m)=>{try{pre.textContent+=m+'\n';pre.scrollTop=pre.scrollHeight}catch(_){}console.log(m)};
+      window.addEventListener('click',e=>__sascLog('[Click] '+e.target.tagName));
+      window.addEventListener('unhandledrejection',e=>__sascLog('[unhandledrejection]: '+(e.reason&&(e.reason.stack||e.reason))));
     })();
   </script>
 
@@ -96,17 +93,16 @@
     })();
   </script>
 
-  <!-- Local-first asset hooks with fetch + XHR fallback -->
+  <!-- local-first hooks with fetch + XHR fallback -->
   <script>
   (function(){
-    const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
+    const base = location.pathname.replace(/\/[^/]*$/, '/');
     const repoRoot = base.replace(/\/$/, '');
     const toLocalAsset = (u) => {
       const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
       return m ? (repoRoot + '/static/assets/' + m[1]) : null;
     };
 
-    // fetch: try local, then ORIGINAL
     const f = window.fetch;
     window.fetch = async function(input, init){
       const url = (typeof input === 'string') ? input : (input && input.url);
@@ -121,14 +117,11 @@
       return f.apply(this, arguments);
     };
 
-    // XHR: try local; if not 2xx, retry original URL
     const XO = window.XMLHttpRequest;
     window.XMLHttpRequest = function(){
-      const x = new XO();
-      let original = null, method = 'GET';
-      const _open = x.open;
+      const x = new XO(); let original=null, method='GET'; const _open = x.open;
       x.open = function(m,u){
-        method = m; original = u;
+        method=m; original=u;
         const local = (typeof u === 'string') ? toLocalAsset(u) : null;
         if (local){
           _open.call(x, m, local);
@@ -139,7 +132,7 @@
               console.log('[SASC] xhr local not OK ('+x.status+') → retry ORIGINAL:', original);
               x.removeEventListener('load', onload);
               _open.call(x, method, original);
-              x.send(); // assets are GET
+              x.send();
             }
           };
           x.addEventListener('load', onload);
@@ -147,130 +140,156 @@
         }
         return _open.apply(x, arguments);
       };
-      const _send = x.send; x.send = function(){ return _send.apply(x, arguments); };
+      const _send=x.send; x.send=function(){ return _send.apply(x,arguments); };
       console.log('[hooks] installed (assets local-first with XHR fallback)');
       return x;
     };
   })();
   </script>
 
-  <!-- Your GUI bundle -->
+  <!-- your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-index"></script>
 
-  <!-- Robust boot + default projectId=0 -->
+  <!-- mount GUI -->
   <script>
   (function boot(){
-    const log = m => (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
-    try {
-      const app = document.getElementById('app');
-      const GUI = window.GUI;
-      if (!GUI) { log('ERROR: window.GUI missing'); return; }
-      if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
+    const log=m=>(window.__sascLog?__sascLog(m):console.log('[SASC]',m));
+    try{
+      const app=document.getElementById('app');
+      const GUI=window.GUI;
+      if(!GUI){log('ERROR: window.GUI missing');return;}
+      if (typeof GUI.setAppElement==='function') GUI.setAppElement(app);
 
-      if (typeof GUI.render === 'function') { GUI.render(app); log('GUI mounted via GUI.render(app)'); }
+      if (typeof GUI.render==='function'){ GUI.render(app); log('GUI mounted via GUI.render(app)'); }
       else {
-        let Wrapped = GUI.default || GUI.GUI || GUI;
-        if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
-        if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
-        if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
-        const props = { isPlayerOnly:false, isFullScreen:false, canUseCloud:false, projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0' };
-        const el = window.React.createElement(Wrapped, props);
-        window.ReactDOM.render(el, app);
-        log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=' + (props.projectId || 'hash'));
+        let Wrapped=GUI.default||GUI.GUI||GUI;
+        if (typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
+        if (typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
+        if (typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+        const el=window.React.createElement(Wrapped,{isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'});
+        window.ReactDOM.render(el,app);
+        log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=0');
       }
-
-      // just a progress log
-      let waited = 0;
-      const tick = setInterval(() => {
-        const vm = window.vm || (GUI && GUI.vm);
-        if (vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length) { log('[VM] ready: ' + vm.runtime.targets.length + ' targets'); clearInterval(tick); }
-        if ((waited += 250) > 15000) { clearInterval(tick); log('VM not ready in time'); }
-      }, 250);
-    } catch (e) { (window.__sascLog||console.error)('BOOT ERROR: ' + (e.stack || e)); }
+    }catch(e){(window.__sascLog||console.error)('BOOT ERROR: '+(e.stack||e));}
   })();
   </script>
 
-  <!-- SASC VM DOCTOR / LIBRARY DIAGNOSTICS -->
+  <!-- SASC toolbar -->
+  <div id="sasc-tools">
+    <button id="btn-log">Log VM Targets</button>
+    <button id="btn-proj0">Force Project 0</button>
+    <button id="btn-sky">Try Add Blue Sky</button>
+  </div>
+
+  <!-- VM doctor + library diagnostics + toolbar handlers -->
   <script>
   (function(){
-    const log = (m, ...a) => (window.__sascLog ? __sascLog(m + (a.length? ' ' + JSON.stringify(a): '')) : console.log('[SASC]', m, ...a));
+    const log=(m,o)=> (window.__sascLog?__sascLog(m+(o? ' '+JSON.stringify(o):'')):console.log('[SASC]',m,o||''));
+    const SKY1 = 'https://kotzem1977.github.io/sasc-scratch-editor/static/assets/e7c147730f19d284bcd7b3f00af19bb6.svg';
 
-    // 1) Watch project 0 network
-    (function tapNetwork(){
-      const pf = window.fetch;
-      window.fetch = async function(i, init){
-        const url = (typeof i === 'string') ? i : (i && i.url);
-        if (url && /\/\/projects\.scratch\.mit\.edu\/0\b/.test(url)) {
-          log('[proj] requesting default project 0 →', url);
-        }
-        const r = await pf.apply(this, arguments);
-        if (url && /\/\/projects\.scratch\.mit\.edu\/0\b/.test(url)) {
-          log('[proj] default project 0 response', {status:r.status, ok:r.ok, finalURL:r.url});
-        }
-        return r;
-      };
-    })();
-
-    // 2) If VM not ready, force-load project 0
-    (function vmRescue(){
-      let tried = false;
-      function tryRescue(){
-        if (tried) return; tried = true;
-        const GUI = window.GUI;
-        const vm  = window.vm || (GUI && GUI.vm);
-        if (!vm) { log('[rescue] vm not on window yet'); return; }
-        const url = 'https://projects.scratch.mit.edu/0?isScratch3=true';
-        log('[rescue] forcing default project load from', url);
-        fetch(url, {cache:'no-store'})
-          .then(r => (r.ok ? r.json() : Promise.reject(new Error('proj0 status '+r.status))))
-          .then(json => vm.loadProject(json))
-          .then(() => log('[rescue] vm.loadProject(0) → OK'))
-          .catch(e => log('[rescue] vm.loadProject(0) failed', {error:String(e)}));
+    // hunt the VM more aggressively
+    function sniffVM(){
+      // direct
+      if (window.vm && window.vm.runtime) return window.vm;
+      if (window.GUI && window.GUI.vm && window.GUI.vm.runtime) return window.GUI.vm;
+      // brute: scan window for object with {runtime:{targets:[]}} and addSprite
+      for (const k in window){
+        try{
+          const v = window[k];
+          if (v && v.runtime && Array.isArray(v.runtime.targets) && typeof v.addSprite === 'function'){
+            return v;
+          }
+        }catch(_){}
       }
-      setTimeout(() => {
-        try {
-          const GUI = window.GUI;
-          const vm  = window.vm || (GUI && GUI.vm);
-          const ready = !!(vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length);
-          log('[doctor] VM ready after wait?', ready);
-          if (!ready) tryRescue();
-        } catch(e) {
-          log('[doctor] error probing VM', {error:String(e)});
+      return null;
+    }
+
+    // force load project 0
+    async function forceProject0(vm){
+      const url='https://projects.scratch.mit.edu/0?isScratch3=true';
+      log('[rescue] forcing default project load from', {url});
+      const r = await fetch(url,{cache:'no-store'});
+      if (!r.ok) throw new Error('proj0 status '+r.status);
+      const json = await r.json();
+      await vm.loadProject(json);
+      log('[rescue] vm.loadProject(0) → OK');
+    }
+
+    // add backdrop via GUI API if possible; else via vm import
+    async function addBackdropFromURL(url){
+      const GUI=window.GUI;
+      const r = await fetch(url,{cache:'no-store'});
+      if(!r.ok) throw new Error('sky fetch '+r.status);
+      const blob = await r.blob();
+      if (GUI && typeof GUI.handleBackdropUpload==='function'){
+        await GUI.handleBackdropUpload(blob, blob.type || 'image/svg+xml');
+        log('[lib] backdrop upload → OK');
+        return;
+      }
+      const vm = sniffVM();
+      if (!vm) throw new Error('vm missing for backdrop import');
+      const stage = vm.runtime.getTargetForStage();
+      if (!stage) throw new Error('no stage target');
+      // VM has helper in GUI normally; we fallback to costume import (supported by vm)
+      await vm.importSpriteCostume(blob, {targetId: stage.id});
+      log('[vm] importSpriteCostume (backdrop) → OK');
+    }
+
+    // long poll until VM appears; then ensure targets exist
+    (function waitForVM(){
+      const t0=Date.now();
+      const timer=setInterval(async ()=>{
+        const vm = sniffVM();
+        if (vm){
+          clearInterval(timer);
+          window.vm = vm; // cache for convenience
+          const ready = vm.runtime.targets && vm.runtime.targets.length>0;
+          log('[doctor] VM found; ready?', {ready, targets:(vm.runtime.targets||[]).length, waitedMs: Date.now()-t0});
+          if (!ready){
+            try { await forceProject0(vm); }
+            catch(e){ log('[rescue] load proj0 failed', {error:String(e)}); }
+          }
+        }else if (Date.now()-t0>30000){
+          clearInterval(timer);
+          log('[doctor] VM not found after 30s');
         }
-      }, 4000);
+      }, 250);
     })();
 
-    // 3) Log library actions and VM.addSprite success/failure
+    // toolbar wiring
+    document.getElementById('btn-log').onclick = () => {
+      const vm=sniffVM();
+      if (!vm) return log('[tools] VM not found yet');
+      const tgts = (vm.runtime.targets||[]).map(t=>({name:t.getName&&t.getName(), isStage:!!t.isStage}));
+      log('[tools] targets', tgts);
+    };
+    document.getElementById('btn-proj0').onclick = async () => {
+      const vm=sniffVM();
+      if (!vm) return log('[tools] VM not found yet');
+      try{ await forceProject0(vm);}catch(e){ log('[tools] proj0 failed', {error:String(e)}); }
+    };
+    document.getElementById('btn-sky').onclick = async () => {
+      try{ await addBackdropFromURL(SKY1);}catch(e){ log('[tools] add sky failed', {error:String(e)}); }
+    };
+
+    // tap library helpers if present for clearer logs
     (function tapLibraries(){
-      const GUI = window.GUI;
-      if (!GUI) return;
-
-      if (GUI.handleBackdropUpload) {
-        const oldBackdrop = GUI.handleBackdropUpload;
-        GUI.handleBackdropUpload = async function(fileOrBlob, mime){
-          log('[lib] add backdrop upload', {mime: mime || (fileOrBlob && fileOrBlob.type)});
-          try { const res = await oldBackdrop.apply(this, arguments); log('[lib] backdrop upload → OK'); return res; }
-          catch(e){ log('[lib] backdrop upload → FAIL', {error:String(e)}); throw e; }
+      const GUI=window.GUI||{};
+      if (GUI.handleBackdropUpload){
+        const oldB=GUI.handleBackdropUpload;
+        GUI.handleBackdropUpload=async function(fileOrBlob,mime){
+          log('[lib] add backdrop upload', {mime: mime || (fileOrBlob&&fileOrBlob.type)});
+          try{const res=await oldB.apply(this,arguments);log('[lib] backdrop upload → OK');return res;}
+          catch(e){log('[lib] backdrop upload → FAIL',{error:String(e)});throw e;}
         };
       }
-      if (GUI.handleSpriteUpload) {
-        const oldSprite = GUI.handleSpriteUpload;
-        GUI.handleSpriteUpload = async function(fileOrBlob){
+      if (GUI.handleSpriteUpload){
+        const oldS=GUI.handleSpriteUpload;
+        GUI.handleSpriteUpload=async function(fileOrBlob){
           log('[lib] add sprite upload');
-          try { const res = await oldSprite.apply(this, arguments); log('[lib] sprite upload → OK'); return res; }
-          catch(e){ log('[lib] sprite upload → FAIL', {error:String(e)}); throw e; }
+          try{const res=await oldS.apply(this,arguments);log('[lib] sprite upload → OK');return res;}
+          catch(e){log('[lib] sprite upload → FAIL',{error:String(e)});throw e;}
         };
-      }
-
-      const vm = window.vm || (GUI && GUI.vm);
-      if (vm && vm.addSprite && !vm.__sascPatched) {
-        const oldAdd = vm.addSprite.bind(vm);
-        vm.addSprite = async function(u8){
-          log('[vm] addSprite called (bytes)', {size: u8 && u8.byteLength});
-          try { const r = await oldAdd(u8); log('[vm] addSprite → OK'); return r; }
-          catch(e){ log('[vm] addSprite → FAIL', {error:String(e)}); throw e; }
-        };
-        vm.__sascPatched = true;
       }
     })();
   })();
