@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (redux bind + boot)</title>
+  <title>SASC Scratch Editor — index (force HOC mount)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -28,7 +28,7 @@
     [class*="sprite-selector_add-button"],[class*="stage-selector_add-button"]{pointer-events:auto}
   </style>
 
-  <!-- Try demo CSS manifest; if 404, we rely on the shim above -->
+  <!-- Try demo CSS; if 404, we rely on the shim -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -57,7 +57,6 @@
     <header>
       <strong>SASC</strong>
       <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button>
-      <!-- tool buttons inserted later -->
     </header>
     <pre>SASC clear
 </pre>
@@ -83,35 +82,6 @@
     })();
   </script>
 
-  <!-- 🔗 Hook Redux createStore BEFORE GUI bundle -->
-  <script>
-  (function hookStore(){
-    const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[bind]',m));
-    const R=window.Redux;
-    if(!R||!R.createStore){log('Redux not ready to hook');return;}
-    const orig=R.createStore;
-    R.createStore=function(){
-      const store=orig.apply(this,arguments);
-      window.__SASC_STORE=store; log('store captured');
-      try{
-        const snap=store.getState&&store.getState();
-        if(snap&&snap.scratchGui&&snap.scratchGui.vm){window.vm=snap.scratchGui.vm; log('window.vm from store (initial)');}
-        store.subscribe(()=>{
-          try{
-            const s=store.getState();
-            if(s&&s.scratchGui&&s.scratchGui.vm&&window.vm!==s.scratchGui.vm){
-              window.vm=s.scratchGui.vm;
-              const t=(window.vm.runtime&&window.vm.runtime.targets||[]).length;
-              log('window.vm from store (targets='+t+')');
-            }
-          }catch(_){}
-        });
-      }catch(_){}
-      return store;
-    };
-  })();
-  </script>
-
   <!-- Local-first asset hooks -->
   <script>
   (function(){
@@ -133,9 +103,10 @@
   <!-- Scratch GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
 
-  <!-- ✅ BOOT: render GUI into #app -->
+
+  <!-- ✅ FORCE HOC MOUNT (skip GUI.render even if present) -->
   <script>
-  (function boot(){
+  (function bootHOC(){
     const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[boot]',m));
     try{
       const app=document.getElementById('app');
@@ -143,38 +114,45 @@
       if(!GUI){log('ERROR: window.GUI missing');return;}
       if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
 
-      if(typeof GUI.render==='function'){
-        GUI.render(app);
-        log('GUI mounted via GUI.render(app)');
-      }else{
-        let Wrapped=GUI.default||GUI.GUI||GUI;
-        if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
-        if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
-        if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
-        const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
-        const el=window.React.createElement(Wrapped,props);
-        window.ReactDOM.render(el,app);
-        log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
-      }
+      let Wrapped=GUI.default||GUI.GUI||GUI;
+      if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
+      if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
+      if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+
+      const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+      const el=window.React.createElement(Wrapped,props);
+      window.ReactDOM.render(el,app);
+      log('GUI mounted via FORCED HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
     }catch(e){(window.__sascLog||console.error)('BOOT ERROR: '+(e.stack||e));}
   })();
   </script>
 
-  <!-- Post-render VM binder (backup) -->
+  <!-- Sturdier VM binder (polls longer, multiple locations) -->
   <script>
   (function bindVM(){
     const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[bind]',m));
-    const grab=()=>{const GUI=window.GUI||{};return window.vm||GUI.vm||(typeof GUI.getVm==='function'?GUI.getVm():null)};
+    function tryGrab(){
+      const GUI=window.GUI||{};
+      return window.vm
+          || GUI.vm
+          || (GUI.appTarget && GUI.appTarget.props && GUI.appTarget.props.vm) // some builds
+          || null;
+    }
     let waited=0;
     const t=setInterval(()=>{
-      const vm=grab();
-      if(vm&&vm.runtime&&vm.runtime.targets){window.vm=vm;log('window.vm attached (targets='+(vm.runtime.targets.length||0)+')');clearInterval(t);return;}
-      if((waited+=250)>15000){clearInterval(t);log('could not attach vm (15s)');}
+      const vm=tryGrab();
+      if(vm && vm.runtime && vm.runtime.targets){
+        window.vm=vm;
+        log('window.vm attached (targets='+(vm.runtime.targets.length||0)+')');
+        clearInterval(t);
+        return;
+      }
+      if((waited+=250)>20000){clearInterval(t);log('could not attach vm (20s)');}
     },250);
   })();
   </script>
 
-  <!-- SASC tools: backdrop/costume/sound -->
+  <!-- SASC tools (backdrop/costume/sound) -->
   <script>
   (function(){
     const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[SASC]',m));
@@ -217,7 +195,6 @@
     async function addBackdropSmart(name,md5ext){
       const vm=window.vm, GUI=window.GUI; if(!vm) throw new Error('vm missing');
       const asset=await fetchAsset(md5ext); const isSVG=/\.svg$/i.test(md5ext); const cos=costumeObj(name,md5ext);
-
       if(GUI&&typeof GUI.handleBackdropUpload==='function'){
         try{log('[backdrop] GUI.handleBackdropUpload'); await GUI.handleBackdropUpload(asset.blob,isSVG?'image/svg+xml':'image/png'); log('[backdrop] success via GUI'); return;}
         catch(e){warn('[backdrop] GUI.handleBackdropUpload failed: '+(e&&e.message||e));}
@@ -233,7 +210,6 @@
           try{log('[backdrop] vm.addCostume(md5ext,costume,stage.id)'); await vm.addCostume(md5ext,cos,st.id); log('[backdrop] success via vm.addCostume(B)'); return;}
           catch(e2){warn('[backdrop] signature B failed: '+(e2&&e2.message||e2));}}
       }
-      // Manual as last resort (kept but usually unnecessary)
       throw new Error('All backdrop strategies failed');
     }
 
@@ -247,9 +223,9 @@
       }
       if(typeof vm.addCostume==='function'){
         try{await vm.addCostume(cos,t.id); log('[costume] success via vm.addCostume(A)'); return;}
-        catch(e1){warn('[costume] signature A failed: '+(e1&&e1.message||e1));
+        catch(e1){warn('[costume] signature A failed: '+(e1&&e.message||e1));
           try{await vm.addCostume(md5ext,cos,t.id); log('[costume] success via vm.addCostume(B)'); return;}
-          catch(e2){warn('[costume] signature B failed: '+(e2&&e2.message||e2));}}
+          catch(e2){warn('[costume] signature B failed: '+(e2&&e.message||e2));}}
       }
       throw new Error('Costume strategies unavailable in this build');
     }
@@ -269,7 +245,7 @@
       throw new Error('No sound upload API available in this build');
     }
 
-    // Wire buttons (+ auto-select Stage before adding a backdrop)
+    // Wire buttons (+ auto-select Stage before backdrop)
     (function wire(){
       const ensureStage=()=>{const vm=window.vm; if(!vm) return; const st=vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage(); if(st){try{vm.setEditingTarget(st.id);}catch(_){}}};
       const btnSky=document.getElementById('btn-add-sky-backdrop');
