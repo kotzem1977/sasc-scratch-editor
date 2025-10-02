@@ -94,7 +94,6 @@
         out('SASC','log saved as sasc-log.txt');
       };
 
-      window.addEventListener('click',e=>out('Click',e.target.tagName));
       window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
   </script>
@@ -137,7 +136,7 @@
     })();
   </script>
 
-  <!-- 4) Your GUI bundle (bump the query if you need to hard-refresh caches) -->
+  <!-- 4) Your GUI bundle -->
   <script src="scratch-gui.js?v=finder-003"></script>
 
   <!-- 5) Mount the GUI -->
@@ -221,9 +220,10 @@
 
   <!-- 7) Helpers/actions (robust, with manual fallbacks) -->
   <script>
-    /* ---------- helpers ---------- */
+    /* ---------- constants ---------- */
     const APPLE_MD5EXT = '3826a4091a33e4d26f87a2fac7cf796b.svg';
 
+    /* ---------- small helpers ---------- */
     function costumeFromMd5(name, md5ext){
       const isSVG = /\.svg$/i.test(md5ext);
       const assetId = md5ext.slice(0,32);
@@ -268,14 +268,31 @@
       try{ vm.runtime.requestRedraw && vm.runtime.requestRedraw(); }catch(_){}
     }
 
-    // Core fix: when we create a skin, also set costume.skinId and re-select it
+    function getSprites(vm){
+      return (vm.runtime.targets||[]).filter(t=>!t.isStage);
+    }
+
+    async function waitForNewSprite(vm, prevCount, name, timeout=2000){
+      const t0=performance.now();
+      while(performance.now()-t0<timeout){
+        const sprites=getSprites(vm);
+        if(sprites.length>prevCount){
+          const byName=name?sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === name):null;
+          return byName || sprites[sprites.length-1];
+        }
+        await new Promise(r=>setTimeout(r,50));
+      }
+      return null;
+    }
+
+    // Create skin + attach, and ensure model + thumbnails update
     async function applyCostumeToTarget(vm, target, md5ext, asset, opts={}){
       const storage = vm.runtime?.storage; if(!storage) throw new Error('No VM storage');
       const id = md5ext.slice(0,32);
       const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
       storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
 
-      // Decide target index (append vs replace)
+      // append vs replace
       let idx = 0;
       const costume = costumeFromMd5(opts.name || null, md5ext);
       if (opts.replaceAll) {
@@ -286,56 +303,46 @@
         idx = target.sprite.costumes.length - 1;
       }
 
-      // Create a skin and attach it
+      // ensure the drawable exists (esp. right after duplicate)
+      await new Promise(r=>requestAnimationFrame(r));
+
+      // create/attach skin
       let skinId = null;
       if (vm.renderer && target.drawableID != null) {
         if (asset.isSVG && vm.renderer.createSVGSkin) {
           const svgText = asset.text ?? await (new Response(asset.blob)).text();
-          // some renderer builds accept (svg, cx, cy)
           try{
             skinId = vm.renderer.createSVGSkin(svgText, costume.rotationCenterX, costume.rotationCenterY);
           }catch(_){
             skinId = vm.renderer.createSVGSkin(svgText);
           }
-          vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
         } else if (!asset.isSVG && vm.renderer.createBitmapSkin) {
           const bmp = await createImageBitmap(asset.blob);
           skinId = vm.renderer.createBitmapSkin(bmp, 1);
-          vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+        }
+
+        if (skinId != null) {
+          // Prefer older API if available
+          if (typeof vm.renderer.updateDrawableSkinId === 'function') {
+            vm.renderer.updateDrawableSkinId(target.drawableID, skinId);
+          } else if (typeof vm.renderer.updateDrawableProperties === 'function') {
+            vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+          }
         }
       }
 
-      // 🔧 key step: put skinId on the model so VM/GUI know how to render thumbnails
-      if (skinId != null) {
-        target.sprite.costumes[idx].skinId = skinId;
-      }
+      // persist skin id on the model for GUI/thumbnail code paths
+      if (skinId != null) target.sprite.costumes[idx].skinId = skinId;
 
-      // Re-select this costume to force the VM to sync drawable ↔ model
+      // re-select to sync VM ↔ renderer ↔ GUI
       try{ target.setCostume(idx); }catch(_){}
 
       emitUiUpdates(vm);
     }
 
-    /* ---------- utilities ---------- */
-    function getSprites(vm){
-      return (vm.runtime.targets||[]).filter(t=>!t.isStage);
-    }
-    async function waitForNewSprite(vm, prevCount, name, timeout=2000){
-      const t0=performance.now();
-      while(performance.now()-t0<timeout){
-        const sprites=getSprites(vm);
-        if(sprites.length>prevCount){
-          const byName=sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === name);
-          return byName || sprites[sprites.length-1];
-        }
-        await new Promise(r=>setTimeout(r,50));
-      }
-      return null;
-    }
-
     /* ---------- Apple paths ---------- */
 
-    // (A) addSprite(JSON) → wait for new target → apply skin bytes
+    // (A) addSprite(JSON) → wait → apply
     async function addApple_A(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
@@ -361,10 +368,7 @@
       }
 
       const tgt = await waitForNewSprite(vm, before, name, 2000);
-      if(!tgt){
-        __sascTag('appleA','no new sprite appeared');
-        return;
-      }
+      if(!tgt){ __sascTag('appleA','no new sprite appeared'); return; }
 
       try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
       const asset=await fetchAsset(APPLE_MD5EXT);
@@ -372,7 +376,7 @@
       __sascTag('appleA','sprite created via addSprite(+apply)');
     }
 
-    // (B) duplicate first sprite → swap skin (this worked for you; now with fixed thumbnails/stage)
+    // (B) duplicate → wait one frame → swap
     async function addApple_B(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
@@ -390,6 +394,9 @@
       const tgt = await waitForNewSprite(vm, before, null, 2000);
       if(!tgt){ __sascTag('appleB','no new sprite after duplicate'); return; }
 
+      // tiny delay to ensure drawable is live
+      await new Promise(r=>requestAnimationFrame(r));
+
       const name='Apple (B)';
       try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
       const asset=await fetchAsset(APPLE_MD5EXT);
@@ -397,7 +404,7 @@
       __sascTag('appleB','sprite created via duplicate+swap');
     }
 
-    // (C) tolerant path
+    // (C) tolerant path, falls back to addCostume
     async function addApple_C(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
