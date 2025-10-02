@@ -13,9 +13,10 @@
     /* SASC console */
     #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
-    #sasc-console[data-theme="light"]{background:#fff9;color:#034;border-color:#89a}
+    /* clearer light theme */
+    #sasc-console[data-theme="light"]{background:#fff;color:#111;border-color:#89a}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
-    #sasc-console[data-theme="light"] header{background:#eaf2ff;border-bottom-color:#89a}
+    #sasc-console[data-theme="light"] header{background:#f4f7ff;border-bottom-color:#89a}
     #sasc-console header strong{margin-right:auto}
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px)}
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
@@ -54,7 +55,7 @@
 </pre>
   </div>
 
-  <!-- 1) Console wiring (keep this tiny) -->
+  <!-- 1) Console wiring -->
   <script>
     (function(){
       const pre=document.querySelector('#sasc-console pre');
@@ -107,7 +108,7 @@
     })();
   </script>
 
-  <!-- 4) Your GUI bundle (bump the query to bust cache if needed) -->
+  <!-- 4) Your GUI bundle (bump query to bust cache if needed) -->
   <script src="scratch-gui.js?v=finder-003"></script>
 
   <!-- 5) Mount the GUI -->
@@ -189,9 +190,9 @@
     })();
   </script>
 
-  <!-- 7) Helpers/actions (correct place) -->
+  <!-- 7) Helpers/actions (robust, with manual fallbacks) -->
   <script>
-    /* ---------- small helpers ---------- */
+    /* ---------- helpers ---------- */
     function costumeFromMd5(name, md5ext){
       const isSVG = /\.svg$/i.test(md5ext);
       const assetId = md5ext.slice(0,32);
@@ -202,7 +203,7 @@
         dataFormat: isSVG ? 'svg' : 'png',
         rotationCenterX: 240,
         rotationCenterY: 180,
-        ...(isSVG ? {} : {bitmapResolution:2, rotationCenterX:240, rotationCenterY:180})
+        ...(isSVG ? {} : {bitmapResolution:2})
       };
     }
 
@@ -223,7 +224,7 @@
         const text = isSVG ? await (new Response(blob)).text() : null;
         return {buf, blob, text, ext, isSVG};
       }
-      try{ const rLocal = await fetch(local,{cache:'no-store'}); if(rLocal.ok) return read(rLocal);}catch(_){}
+      try{ const rLocal=await fetch(local,{cache:'no-store'}); if(rLocal.ok) return read(rLocal);}catch(_){}
       const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
       const rCdn=await fetch(cdn,{cache:'no-store'}); if(!rCdn.ok) throw new Error('CDN '+rCdn.status);
       return read(rCdn);
@@ -264,48 +265,67 @@
       emitUiUpdates(vm);
     }
 
+    /* ---------- robust sprite creation (handles builds that don't return id) ---------- */
+    async function waitForNewSprite(vm, prevCount, name, timeout=2000){
+      const t0=performance.now();
+      while(performance.now()-t0<timeout){
+        const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
+        if(sprites.length>prevCount){
+          const byName=sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === (name||'New Sprite'));
+          return byName || sprites[sprites.length-1];
+        }
+        await new Promise(r=>setTimeout(r,50));
+      }
+      return null;
+    }
+
     async function addSpriteFromCostume(name, md5ext){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
       const asset = await fetchAsset(md5ext);
 
+      const before=(vm.runtime.targets||[]).filter(t=>!t.isStage).length;
       if (typeof vm.addSprite === 'function') {
-        const spriteObj = {
-          isStage:false,
-          name: name || 'New Sprite',
-          variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
-          currentCostume:0,
-          costumes:[costumeFromMd5(name, md5ext)],
-          sounds:[],
-          volume:100,
-          layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
-          draggable:false, rotationStyle:"all around"
-        };
-        const id = await vm.addSprite(JSON.stringify(spriteObj));
-        const tgt = (vm.runtime.targets||[]).find(t=>t.id===id);
-        if (tgt) {
-          await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
-          __sascTag('tools','sprite created via vm.addSprite');
-          return;
-        }
+        try{
+          await vm.addSprite(JSON.stringify({
+            isStage:false,
+            name: name || 'New Sprite',
+            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+            currentCostume:0,
+            costumes:[costumeFromMd5(name, md5ext)],
+            sounds:[],
+            volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+            draggable:false, rotationStyle:"all around"
+          }));
+          const tgt = await waitForNewSprite(vm, before, name);
+          if (tgt){
+            await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
+            __sascTag('tools','sprite created via vm.addSprite');
+            return;
+          }
+        }catch(e){ __sascTag('tools','addSprite path failed: '+(e&&e.message||e)); }
       }
 
-      const sprites = (vm.runtime.targets||[]).filter(t=>!t.isStage);
-      if (sprites.length && typeof vm.duplicateSprite === 'function') {
-        const baseId = sprites[0].id;
-        const newId = await vm.duplicateSprite(baseId).catch(()=>null);
-        if (!newId) throw new Error('duplicateSprite failed');
-        const tgt = (vm.runtime.targets||[]).find(t=>t.id===newId);
-        if (!tgt) throw new Error('New sprite target not found');
-        try{ await vm.renameSprite(newId, name||'New Sprite'); }catch(_){ if(tgt.sprite) tgt.sprite.name = name||'New Sprite'; }
-        await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
-        __sascTag('tools','sprite created via duplicate+swap');
-        return;
+      const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
+      if (sprites.length && typeof vm.duplicateSprite === 'function'){
+        const before2=sprites.length;
+        const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(()=>false);
+        if (ok){
+          const tgt = await waitForNewSprite(vm, before2, null);
+          if (tgt){
+            try{ await vm.renameSprite(tgt.id, name||'New Sprite'); }catch(_){ if(tgt.sprite) tgt.sprite.name=name||'New Sprite'; }
+            await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
+            __sascTag('tools','sprite created via duplicate+swap');
+            return;
+          }
+        }
+        __sascTag('tools','duplicateSprite failed or no new target appeared');
       }
 
       throw new Error('No sprite creation path available in this build');
     }
 
+    /* ---------- costume (manual path preferred for your build) ---------- */
     async function addCostumeToSelected(name, md5ext){
       const vm = window.vm || await bindVM(6000), GUI = window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -323,70 +343,35 @@
         }catch(e){ __sascTag('costume','GUI helper failed: '+(e&&e.message||e)); }
       }
 
-      if (typeof vm.addCostume === 'function') {
-        try{
-          const model = costumeFromMd5(name, md5ext);
-          await vm.addCostume(model, t.id);
-          await applyCostumeToTarget(vm, t, md5ext, asset, {replaceAll:false, name});
-          __sascTag('costume','success via vm.addCostume (+bytes)');
-          return;
-        }catch(e){ __sascTag('costume','vm.addCostume failed: '+(e&&e.message||e)); }
-      }
-
       await applyCostumeToTarget(vm, t, md5ext, asset, {replaceAll:false, name});
       __sascTag('costume','success via manual injection');
     }
 
+    /* ---------- backdrop (force manual so it always shows) ---------- */
     async function addBackdropSmart(name, md5ext){
-      const vm = window.vm || await bindVM(6000), GUI = window.GUI;
+      const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
-      const asset = await fetchAsset(md5ext);
-      const isSVG = asset.isSVG;
-
       const stage = vm.runtime.getTargetForStage?.();
-      if (stage && typeof vm.setEditingTarget === 'function') { try{ vm.setEditingTarget(stage.id); }catch(_){} }
+      if(!stage) throw new Error('No stage target');
+      const asset = await fetchAsset(md5ext);
 
-      if (GUI?.handleBackdropUpload) {
-        try{
-          await GUI.handleBackdropUpload(asset.blob, isSVG?'image/svg+xml':'image/png');
-          __sascTag('backdrop','success via GUI.handleBackdropUpload');
-          return;
-        }catch(e){ __sascTag('backdrop','GUI helper failed: '+(e&&e.message||e)); }
-      }
-
-      if (typeof vm.addBackdrop === 'function') {
-        try{
-          const model = costumeFromMd5(name, md5ext);
-          await vm.addBackdrop(md5ext, model);
-          await applyCostumeToTarget(vm, stage, md5ext, asset, {replaceAll:false, name});
-          __sascTag('backdrop','success via vm.addBackdrop (+bytes)');
-          return;
-        }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
-      }
-
-      if (!stage) throw new Error('No stage target');
       await applyCostumeToTarget(vm, stage, md5ext, asset, {replaceAll:false, name});
       __sascTag('backdrop','success via manual stage injection');
     }
 
+    /* ---------- sounds (unsupported VM helper on this build) ---------- */
     async function addSoundToSelected(name, md5ext){
       const vm=window.vm || await bindVM(6000), GUI=window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
       const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
       if(!t) throw new Error('No editing target');
       const asset=await fetchAsset(md5ext);
+
       if(GUI?.handleSoundUpload){
         try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
         catch(e){ __sascTag('sound','GUI helper failed: '+(e&&e.message||e)); }
       }
-      if(typeof vm.addSound==='function'){
-        try{
-          const id = md5ext.slice(0,32);
-          const ext = md5ext.split('.').pop().toLowerCase();
-          const snd={ name:name||('Sound '+md5ext.slice(0,6)), assetId:id, md5ext, dataFormat:ext, format:'', rate:44100, sampleCount:0 };
-          await vm.addSound(md5ext, snd, t.id); __sascTag('sound','success via vm.addSound'); return;
-        }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
-      }
+      __sascTag('sound','sound upload not supported in this build (use GUI Sounds tab)');
       throw new Error('No sound upload path available in this build');
     }
 
