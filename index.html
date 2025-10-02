@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (clean final+shim)</title>
+  <title>SASC Scratch Editor — index (clean final+shim+doctor)</title>
 
   <!-- repo-scoped favicon -->
   <link rel="icon" href="./favicon.ico"/>
@@ -19,7 +19,7 @@
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
   </style>
 
-  <!-- CSS loader: try manifest; if it 404s, demo has moved CSS into JS; the shim below covers essentials -->
+  <!-- CSS loader: try manifest; if 404s, rely on shim below -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -29,33 +29,32 @@
     document.documentElement.setAttribute('data-sasc-css-loaded','1');
     fetch(BASE+'/asset-manifest.json')
       .then(r=>r.ok?r.json():Promise.reject())
-      .then(man=>{var files=(man&&man.files)||{}, css=[]; Object.keys(files).forEach(k=>{if(/\.css$/.test(files[k]))css.push(files[k])});
-        if(Array.isArray(man.entrypoints)) man.entrypoints.forEach(ep=>{if(/\.css$/.test(ep))css.push(ep)});
+      .then(man=>{
+        var files=(man&&man.files)||{}, css=[];
+        Object.keys(files).forEach(k=>{ if(/\.css$/.test(files[k])) css.push(files[k]) });
+        if(Array.isArray(man.entrypoints)) man.entrypoints.forEach(ep=>{ if(/\.css$/.test(ep)) css.push(ep) });
         css=Array.from(new Set(css)).map(abs); css.forEach(add);
         console.log('[SASC] CSS via manifest:', css);
       })
-      .catch(()=>{console.warn('[SASC] demo CSS manifest/links not available; relying on shim');});
+      .catch(()=>{ console.warn('[SASC] demo CSS manifest/links not available; relying on shim'); });
   })();
   </script>
 
-  <!-- 🔧 Minimal CSS shim: fixes stage layout, z-index of flags/modals, hand cursor, basic panes -->
+  <!-- Minimal CSS shim: fixes stage layout, z-index of flags/modals, hand cursor, basic panes -->
   <style id="sasc-css-shim">
     /* Stage / controls stacking */
     [class*="stage-wrapper"]{position:relative;z-index:0}
     [class*="stage-header"]{position:relative;z-index:2}
     [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
     canvas{cursor:default}
-
-    /* Ensure editor columns show (basic flex) */
+    /* Editor columns */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
     [class*="target-pane"]{min-width:240px;flex:0 0 240px}
     [class*="stage-wrapper"]{flex:0 0 auto}
-
-    /* Library modal z-index above stage */
+    /* Library modal above stage */
     [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
     [class*="sprite-selector"] img{display:block}
-
     /* Sprite/backdrop add buttons clickable */
     [class*="sprite-selector_add-button"], [class*="stage-selector_add-button"]{pointer-events:auto}
   </style>
@@ -97,7 +96,7 @@
     })();
   </script>
 
-  <!-- Local-first asset hooks for internalapi/asset/.../get/ with fallback (fetch + XHR) -->
+  <!-- Local-first asset hooks with fetch + XHR fallback -->
   <script>
   (function(){
     const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
@@ -107,7 +106,7 @@
       return m ? (repoRoot + '/static/assets/' + m[1]) : null;
     };
 
-    // --- fetch: try local, then ORIGINAL (fallback) ---
+    // fetch: try local, then ORIGINAL
     const f = window.fetch;
     window.fetch = async function(input, init){
       const url = (typeof input === 'string') ? input : (input && input.url);
@@ -122,7 +121,7 @@
       return f.apply(this, arguments);
     };
 
-    // --- XHR: try local; if NOT 2xx, retry ORIGINAL URL ---
+    // XHR: try local; if not 2xx, retry original URL
     const XO = window.XMLHttpRequest;
     window.XMLHttpRequest = function(){
       const x = new XO();
@@ -140,7 +139,7 @@
               console.log('[SASC] xhr local not OK ('+x.status+') → retry ORIGINAL:', original);
               x.removeEventListener('load', onload);
               _open.call(x, method, original);
-              x.send(); // assets are GET in Scratch GUI
+              x.send(); // assets are GET
             }
           };
           x.addEventListener('load', onload);
@@ -180,6 +179,7 @@
         log('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=' + (props.projectId || 'hash'));
       }
 
+      // just a progress log
       let waited = 0;
       const tick = setInterval(() => {
         const vm = window.vm || (GUI && GUI.vm);
@@ -187,6 +187,92 @@
         if ((waited += 250) > 15000) { clearInterval(tick); log('VM not ready in time'); }
       }, 250);
     } catch (e) { (window.__sascLog||console.error)('BOOT ERROR: ' + (e.stack || e)); }
+  })();
+  </script>
+
+  <!-- SASC VM DOCTOR / LIBRARY DIAGNOSTICS -->
+  <script>
+  (function(){
+    const log = (m, ...a) => (window.__sascLog ? __sascLog(m + (a.length? ' ' + JSON.stringify(a): '')) : console.log('[SASC]', m, ...a));
+
+    // 1) Watch project 0 network
+    (function tapNetwork(){
+      const pf = window.fetch;
+      window.fetch = async function(i, init){
+        const url = (typeof i === 'string') ? i : (i && i.url);
+        if (url && /\/\/projects\.scratch\.mit\.edu\/0\b/.test(url)) {
+          log('[proj] requesting default project 0 →', url);
+        }
+        const r = await pf.apply(this, arguments);
+        if (url && /\/\/projects\.scratch\.mit\.edu\/0\b/.test(url)) {
+          log('[proj] default project 0 response', {status:r.status, ok:r.ok, finalURL:r.url});
+        }
+        return r;
+      };
+    })();
+
+    // 2) If VM not ready, force-load project 0
+    (function vmRescue(){
+      let tried = false;
+      function tryRescue(){
+        if (tried) return; tried = true;
+        const GUI = window.GUI;
+        const vm  = window.vm || (GUI && GUI.vm);
+        if (!vm) { log('[rescue] vm not on window yet'); return; }
+        const url = 'https://projects.scratch.mit.edu/0?isScratch3=true';
+        log('[rescue] forcing default project load from', url);
+        fetch(url, {cache:'no-store'})
+          .then(r => (r.ok ? r.json() : Promise.reject(new Error('proj0 status '+r.status))))
+          .then(json => vm.loadProject(json))
+          .then(() => log('[rescue] vm.loadProject(0) → OK'))
+          .catch(e => log('[rescue] vm.loadProject(0) failed', {error:String(e)}));
+      }
+      setTimeout(() => {
+        try {
+          const GUI = window.GUI;
+          const vm  = window.vm || (GUI && GUI.vm);
+          const ready = !!(vm && vm.runtime && vm.runtime.targets && vm.runtime.targets.length);
+          log('[doctor] VM ready after wait?', ready);
+          if (!ready) tryRescue();
+        } catch(e) {
+          log('[doctor] error probing VM', {error:String(e)});
+        }
+      }, 4000);
+    })();
+
+    // 3) Log library actions and VM.addSprite success/failure
+    (function tapLibraries(){
+      const GUI = window.GUI;
+      if (!GUI) return;
+
+      if (GUI.handleBackdropUpload) {
+        const oldBackdrop = GUI.handleBackdropUpload;
+        GUI.handleBackdropUpload = async function(fileOrBlob, mime){
+          log('[lib] add backdrop upload', {mime: mime || (fileOrBlob && fileOrBlob.type)});
+          try { const res = await oldBackdrop.apply(this, arguments); log('[lib] backdrop upload → OK'); return res; }
+          catch(e){ log('[lib] backdrop upload → FAIL', {error:String(e)}); throw e; }
+        };
+      }
+      if (GUI.handleSpriteUpload) {
+        const oldSprite = GUI.handleSpriteUpload;
+        GUI.handleSpriteUpload = async function(fileOrBlob){
+          log('[lib] add sprite upload');
+          try { const res = await oldSprite.apply(this, arguments); log('[lib] sprite upload → OK'); return res; }
+          catch(e){ log('[lib] sprite upload → FAIL', {error:String(e)}); throw e; }
+        };
+      }
+
+      const vm = window.vm || (GUI && GUI.vm);
+      if (vm && vm.addSprite && !vm.__sascPatched) {
+        const oldAdd = vm.addSprite.bind(vm);
+        vm.addSprite = async function(u8){
+          log('[vm] addSprite called (bytes)', {size: u8 && u8.byteLength});
+          try { const r = await oldAdd(u8); log('[vm] addSprite → OK'); return r; }
+          catch(e){ log('[vm] addSprite → FAIL', {error:String(e)}); throw e; }
+        };
+        vm.__sascPatched = true;
+      }
+    })();
   })();
   </script>
 </body>
