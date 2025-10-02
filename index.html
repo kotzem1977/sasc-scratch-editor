@@ -11,13 +11,13 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
     /* SASC console (light by default) */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:52vh;background:#fff;color:#111;
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:460px;max-height:52vh;background:#fff;color:#111;
       font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #89a;border-radius:8px;z-index:99999}
     #sasc-console:not([data-theme="light"]){background:#0b0e;color:#0ff;border-color:#044}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#f4f7ff;border-bottom:1px solid #89a;border-radius:8px 8px 0 0}
     #sasc-console:not([data-theme="light"]) header{background:#022;border-bottom-color:#044}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px);user-select:text}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 48px);user-select:text}
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
@@ -46,7 +46,12 @@
       <span class="btnrow">
         <button id="btn-bind">Bind VM</button>
         <button id="btn-targets">List Targets</button>
-        <button id="btn-apple">Add Apple Sprite</button>
+
+        <!-- Three separate Apple buttons -->
+        <button id="btn-apple-a">Add Apple Sprite (A)</button>
+        <button id="btn-apple-b">Add Apple Sprite (B)</button>
+        <button id="btn-apple-c">Add Apple Sprite (C)</button>
+
         <button id="btn-backdrop">Add Backdrop (md5.ext)…</button>
         <button id="btn-costume">Add Costume…</button>
         <button id="btn-sound">Add Sound…</button>
@@ -217,6 +222,8 @@
   <!-- 7) Helpers/actions (robust, with manual fallbacks) -->
   <script>
     /* ---------- helpers ---------- */
+    const APPLE_MD5EXT = '3826a4091a33e4d26f87a2fac7cf796b.svg';
+
     function costumeFromMd5(name, md5ext){
       const isSVG = /\.svg$/i.test(md5ext);
       const assetId = md5ext.slice(0,32);
@@ -289,11 +296,14 @@
       emitUiUpdates(vm);
     }
 
-    /* ---------- robust sprite creation (blank sprite + apply Apple) ---------- */
+    /* ---------- utilities ---------- */
+    function getSprites(vm){
+      return (vm.runtime.targets||[]).filter(t=>!t.isStage);
+    }
     async function waitForNewSprite(vm, prevCount, name, timeout=2000){
       const t0=performance.now();
       while(performance.now()-t0<timeout){
-        const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
+        const sprites=getSprites(vm);
         if(sprites.length>prevCount){
           const byName=sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === name);
           return byName || sprites[sprites.length-1];
@@ -303,42 +313,108 @@
       return null;
     }
 
-    async function addAppleAsNewSprite(){
+    /* ---------- Apple paths ---------- */
+
+    // (A) addSprite(JSON) → wait for new target → apply skin bytes
+    async function addApple_A(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
 
-      const md5ext = '3826a4091a33e4d26f87a2fac7cf796b.svg';
-      const name = 'Apple';
+      const name='Apple (A)';
+      const before=getSprites(vm).length;
       const spriteJson = {
         isStage:false,
         name,
         variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
         currentCostume:0,
-        costumes:[{
-          name, assetId: md5ext.slice(0,32), md5ext, dataFormat:'svg',
-          rotationCenterX:240, rotationCenterY:180
-        }],
+        costumes:[costumeFromMd5(name, APPLE_MD5EXT)],
         sounds:[],
         volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
         draggable:false, rotationStyle:"all around"
       };
 
-      const before = (vm.runtime.targets||[]).filter(t=>!t.isStage).length;
-      try{ await vm.addSprite(JSON.stringify(spriteJson)); }catch(e){ __sascTag('tools','addSprite threw: '+(e&&e.message||e)); }
-
-      let tgt = await waitForNewSprite(vm, before, name, 2000);
-      if(!tgt){
-        __sascTag('tools','blank sprite did not appear; falling back to costume on selected sprite');
-        return addCostumeToSelected(name, md5ext);
+      try{
+        if(typeof vm.addSprite!=='function') throw new Error('vm.addSprite not available');
+        await vm.addSprite(JSON.stringify(spriteJson));
+      }catch(e){
+        __sascTag('appleA','addSprite threw: '+(e&&e.message||e));
       }
 
-      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name = name; }
-      const asset = await fetchAsset(md5ext);
-      await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name});
-      __sascTag('tools','sprite created via addSprite(+apply)');
+      const tgt = await waitForNewSprite(vm, before, name, 2000);
+      if(!tgt){
+        __sascTag('appleA','no new sprite appeared');
+        return;
+      }
+
+      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
+      const asset=await fetchAsset(APPLE_MD5EXT);
+      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
+      __sascTag('appleA','sprite created via addSprite(+apply)');
     }
 
-    /* ---------- user actions ---------- */
+    // (B) duplicate first sprite → swap skin
+    async function addApple_B(){
+      const vm = window.vm || await bindVM(6000);
+      if(!vm?.runtime) throw new Error('vm missing');
+
+      const sprites=getSprites(vm);
+      if(!sprites.length || typeof vm.duplicateSprite!=='function'){
+        __sascTag('appleB','duplicate path not available');
+        return;
+      }
+
+      const before=sprites.length;
+      const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(e=>{__sascTag('appleB','duplicate failed: '+(e&&e.message||e)); return false;});
+      if(!ok) return;
+
+      const tgt = await waitForNewSprite(vm, before, null, 2000);
+      if(!tgt){ __sascTag('appleB','no new sprite after duplicate'); return; }
+
+      const name='Apple (B)';
+      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
+      const asset=await fetchAsset(APPLE_MD5EXT);
+      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
+      __sascTag('appleB','sprite created via duplicate+swap');
+    }
+
+    // (C) tolerant path: try addSprite; if nothing appears, fall back to adding Apple costume to the selected sprite
+    async function addApple_C(){
+      const vm = window.vm || await bindVM(6000);
+      if(!vm?.runtime) throw new Error('vm missing');
+
+      const name='Apple (C)';
+      const before=getSprites(vm).length;
+      let created=false;
+
+      try{
+        if(typeof vm.addSprite==='function'){
+          await vm.addSprite(JSON.stringify({
+            isStage:false,
+            name,
+            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+            currentCostume:0,
+            costumes:[costumeFromMd5(name, APPLE_MD5EXT)],
+            sounds:[],
+            volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+            draggable:false, rotationStyle:"all around"
+          }));
+          const tgt = await waitForNewSprite(vm, before, name, 1200);
+          if(tgt){
+            const asset=await fetchAsset(APPLE_MD5EXT);
+            await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
+            __sascTag('appleC','sprite created via addSprite(+apply)');
+            created=true;
+          }
+        }
+      }catch(e){ __sascTag('appleC','addSprite threw: '+(e&&e.message||e)); }
+
+      if(!created){
+        __sascTag('appleC','falling back: applying Apple costume to selected sprite');
+        await addCostumeToSelected(name, APPLE_MD5EXT);
+      }
+    }
+
+    /* ---------- user actions (costume/backdrop/sound) ---------- */
     async function addCostumeToSelected(name, md5ext){
       const vm = window.vm || await bindVM(6000), GUI = window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -385,24 +461,28 @@
       throw new Error('No sound upload path available in this build');
     }
 
-    /* buttons */
+    /* ---------- buttons ---------- */
     document.getElementById('btn-targets').onclick=()=>{
       const vm=window.vm; if(!vm||!vm.runtime) return __sascTag('targets','VM not ready');
       const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
       ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite?.name||'(?)')));
     };
-    document.getElementById('btn-apple').onclick=()=>{
-      addAppleAsNewSprite().catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
-    };
+
+    // Three Apple paths
+    document.getElementById('btn-apple-a').onclick=()=>{ addApple_A().catch(e=>__sascTag('appleA','failed: '+(e&&e.message||e))); };
+    document.getElementById('btn-apple-b').onclick=()=>{ addApple_B().catch(e=>__sascTag('appleB','failed: '+(e&&e.message||e))); };
+    document.getElementById('btn-apple-c').onclick=()=>{ addApple_C().catch(e=>__sascTag('appleC','failed: '+(e&&e.message||e))); };
+
     document.getElementById('btn-backdrop').onclick=()=>{
       const md5ext=prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg'); if(!md5ext) return;
       addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
     };
     document.getElementById('btn-costume').onclick=()=>{
-      const md5ext=prompt('Costume md5.ext (svg/png):','3826a4091a33e4d26f87a2fac7cf796b.svg'); if(!md5ext) return;
+      const md5ext=prompt('Costume md5.ext (svg/png):', APPLE_MD5EXT); if(!md5ext) return;
       addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
     };
     document.getElementById('btn-sound').onclick=()=>{
+      // Using Scratch's built-in "Meow" asset id; on GitHub Pages, local-first may log a 404 before CDN succeeds — that's OK.
       const md5ext=prompt('Sound md5.ext (wav/mp3):','83c36d806dc92327b9e7049a565c6bff.wav'); if(!md5ext) return;
       addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
     };
