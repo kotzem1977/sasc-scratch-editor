@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — alt (stable-apple)</title>
+  <title>SASC Scratch Editor — alt (vm-binder-strong)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;max-height:50vh;background:#111a;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:55vh;background:#111a;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(50vh - 46px)}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(55vh - 46px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
     #sasc-console button:hover{background:#033}
 
@@ -35,9 +35,10 @@
     <header>
       <strong>SASC</strong>
       <button id="btn-clear">Clear</button>
+      <button id="btn-rebind">Force rebind VM</button>
+      <button id="btn-targets">List Targets</button>
       <button id="btn-apple">+ Apple (one click)</button>
       <button id="btn-backdrop-sky">+ Blue Sky → Backdrop</button>
-      <button id="btn-targets">List Targets</button>
     </header>
     <pre>SASC clear
 </pre>
@@ -125,32 +126,62 @@
     })();
   </script>
 
-  <!-- Same VM binder + Apple/Backdrop tools as index -->
+  <!-- Same strong binder + tools -->
   <script>
   (function(){
     const APPLE_SVG = '3826a4091a33e4d26f87a2fac7cf796b.svg';
     const SKY_SVG   = 'e7c147730f19d284bcd7b3f00af19bb6.svg';
 
     let vmRef = null;
-    function discoverVM(){
-      try{
-        if (window.vm && window.vm.runtime) return window.vm;
-        const GUI = window.GUI;
-        if (GUI) {
-          if (GUI.vm && GUI.vm.runtime) return GUI.vm;
-          if (GUI.store && GUI.store.getState){
-            const st = GUI.store.getState();
-            const maybe = st && st.scratchGui && st.scratchGui.vm;
-            if (maybe && maybe.runtime) return maybe;
-          }
-        }
-      }catch(_){}
+    function getFromGUI(){
+      const GUI = window.GUI;
+      if (!GUI) return null;
+      if (GUI.vm && GUI.vm.runtime) return {vm:GUI.vm, via:'GUI.vm'};
+      if (GUI.store && GUI.store.getState){
+        try{
+          const st = GUI.store.getState();
+          const maybe = st && st.scratchGui && st.scratchGui.vm;
+          if (maybe && maybe.runtime) return {vm:maybe, via:'GUI.store.scratchGui.vm'};
+        }catch(_){}
+      }
       return null;
     }
-    const vmTimer = setInterval(()=>{
-      vmRef = discoverVM();
-      if (vmRef && vmRef.runtime) { window.vm = vmRef; __sascLog('VM attached'); clearInterval(vmTimer); }
-    }, 500);
+    function discoverVMOnce(){
+      if (window.vm && window.vm.runtime) return {vm:window.vm, via:'window.vm'};
+      const fromGUI = getFromGUI(); if (fromGUI) return fromGUI;
+      const SG = window.ScratchGUI;
+      if (SG){
+        if (SG.vm && SG.vm.runtime) return {vm:SG.vm, via:'ScratchGUI.vm'};
+        if (SG.store && SG.store.getState){
+          try{
+            const st = SG.store.getState();
+            const maybe = st && st.scratchGui && st.scratchGui.vm;
+            if (maybe && maybe.runtime) return {vm:maybe, via:'ScratchGUI.store.scratchGui.vm'};
+          }catch(_){}
+        }
+      }
+      return null;
+    }
+    function attachVM(found){
+      if (!found) return false;
+      vmRef = found.vm;
+      window.vm = vmRef;
+      const n = (vmRef.runtime.targets && vmRef.runtime.targets.length) || 0;
+      __sascLog('VM attached via ' + found.via + ' (targets=' + n + ')');
+      return true;
+    }
+    setInterval(()=>{
+      if (vmRef && vmRef.runtime) return;
+      const found = discoverVMOnce();
+      if (found) attachVM(found);
+      else __sascLog('still waiting for VM…');
+    }, 400);
+
+    document.getElementById('btn-rebind').onclick = ()=>{
+      const found = discoverVMOnce();
+      if (attachVM(found)) return;
+      __sascLog('rebind: VM not found in known paths');
+    };
 
     function repoBase(){ return location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, ''); }
     function parseAsset(md5ext){ const m=String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{assetId:m[1],ext:m[2].toLowerCase()}:null; }
@@ -175,31 +206,31 @@
     function stage(vm){ return vm && vm.runtime && vm.runtime.getTargetForStage ? vm.runtime.getTargetForStage() : null; }
 
     async function addApple(){
-      const vm = vmRef || discoverVM();
+      const vm = vmRef && vmRef.runtime ? vmRef : (discoverVMOnce()||{}).vm;
       if (!vm || !vm.addSprite) { __sascLog('[tools] vm not ready for addSprite'); return; }
       try {
-        const asset = await fetchAsset(APPLE_SVG);
+        const asset = await fetchAsset('3826a4091a33e4d26f87a2fac7cf796b.svg');
         await vm.addSprite(new Uint8Array(asset.arrayBuffer));
         __sascLog('[tools] Apple sprite added');
       } catch(e){ __sascLog('[tools] Apple add failed: ' + (e && e.message || e)); }
     }
 
     async function addSkyAsBackdrop(){
-      const vm = vmRef || discoverVM();
+      const found = vmRef && vmRef.runtime ? {vm:vmRef} : discoverVMOnce();
+      const vm = found && found.vm;
       if (!vm) { __sascLog('[tools] VM not found yet'); return; }
       const st = stage(vm);
       if (!st) { __sascLog('[tools] No stage target'); return; }
-      const cos = costumeObj('Blue Sky', SKY_SVG);
+      const cos = costumeObj('Blue Sky', 'e7c147730f19d284bcd7b3f00af19bb6.svg');
+
+      try{ if (typeof vm.addBackdrop === 'function') { await vm.addBackdrop('e7c147730f19d284bcd7b3f00af19bb6.svg', cos); __sascLog('[tools] Blue Sky backdrop via vm.addBackdrop ✅'); return; } }
+      catch(e){ __sascLog('[tools] vm.addBackdrop failed: ' + (e && e.message || e)); }
+      try{ if (typeof vm.addCostume === 'function') { await vm.addCostume(cos, st.id); __sascLog('[tools] Blue Sky backdrop via vm.addCostume ✅'); return; } }
+      catch(e){ __sascLog('[tools] vm.addCostume(stage) failed: ' + (e && e.message || e)); }
       try{
-        if (typeof vm.addBackdrop === 'function'){ await vm.addBackdrop(SKY_SVG, cos); __sascLog('[tools] Blue Sky backdrop via vm.addBackdrop ✅'); return; }
-      }catch(e){ __sascLog('[tools] vm.addBackdrop failed: ' + (e && e.message || e)); }
-      try{
-        if (typeof vm.addCostume === 'function'){ await vm.addCostume(cos, st.id); __sascLog('[tools] Blue Sky backdrop via vm.addCostume ✅'); return; }
-      }catch(e){ __sascLog('[tools] vm.addCostume(stage) failed: ' + (e && e.message || e)); }
-      try{
-        const asset = await fetchAsset(SKY_SVG);
+        const asset = await fetchAsset('e7c147730f19d284bcd7b3f00af19bb6.svg');
         const storage = vm.runtime && vm.runtime.storage; if (!storage) throw new Error('No VM storage');
-        const p = parseAsset(SKY_SVG)||{ext:'svg', assetId:''};
+        const p = parseAsset('e7c147730f19d284bcd7b3f00af19bb6.svg')||{ext:'svg', assetId:''};
         const type = (p.ext==='svg') ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
         storage.createAsset(type, p.ext, new Uint8Array(asset.arrayBuffer), p.assetId);
         st.sprite.costumes.push(cos);
@@ -211,9 +242,7 @@
           } else if (vm.renderer.createBitmapSkin) {
             const bmp = await createImageBitmap(asset.blob); const skinId = vm.renderer.createBitmapSkin(bmp, 1);
             st.setCostume(idx); vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
-          } else {
-            st.setCostume(idx);
-          }
+          } else { st.setCostume(idx); }
         } else { st.setCostume(idx); }
         try { vm.runtime.emit('PROJECT_CHANGED'); } catch(_){}
         __sascLog('[tools] Blue Sky backdrop via manual injection ✅');
@@ -223,7 +252,8 @@
     document.getElementById('btn-apple').onclick = addApple;
     document.getElementById('btn-backdrop-sky').onclick = addSkyAsBackdrop;
     document.getElementById('btn-targets').onclick = ()=>{
-      const vm = vmRef || discoverVM();
+      const found = vmRef && vmRef.runtime ? {vm:vmRef} : discoverVMOnce();
+      const vm = found && found.vm;
       if (!vm || !vm.runtime || !vm.runtime.targets){ __sascLog('[targets] VM not ready'); return; }
       const ts = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ') + (t.getName ? t.getName() : t.sprite && t.sprite.name));
       __sascLog('[targets] ' + vm.runtime.targets.length + ' targets\n- ' + ts.join('\n- '));
