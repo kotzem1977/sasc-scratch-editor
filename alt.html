@@ -14,40 +14,12 @@
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
 
-    /* safety net */
+    /* Safety net */
     #app [class*="stage-wrapper"] { position: relative; z-index: 0; }
-    #app [class*="green-flag"], #app [class*="stop-all"] { z-index: 1; position: relative; }
+    #app [class*="controls"], #app [class*="green--flag"], #app [class*="stop-all"] { position: relative; z-index: 3; }
+    [class*="modal-overlay"], [class*="modal-content"] { z-index: 9999 !important; }
     #app canvas { cursor: default; }
   </style>
-
-  <script>
-  (function loadScratchGuiCSS(){
-    var ORIGIN = 'https://scratchfoundation.github.io';
-    var BASE   = ORIGIN + '/scratch-gui';
-    function add(href){ var l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l); }
-    function toAbs(p){ if(!p)return null; if(p.startsWith('http'))return p; if(p.startsWith('//'))return 'https:'+p; if(p.startsWith('/'))return ORIGIN+p; return BASE+'/'+p.replace(/^\.?\//,''); }
-    if (document.documentElement.hasAttribute('data-sasc-css-loaded')) return;
-    document.documentElement.setAttribute('data-sasc-css-loaded','1');
-    fetch(BASE + '/asset-manifest.json')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(man => {
-        var files = (man && man.files) || {};
-        var css = [];
-        Object.keys(files).forEach(k => { if (/\.css$/.test(files[k])) css.push(files[k]); });
-        if (Array.isArray(man.entrypoints)) man.entrypoints.forEach(ep => { if (/\.css$/.test(ep)) css.push(ep);});
-        css = Array.from(new Set(css)).map(toAbs); css.forEach(add);
-        console.log('[SASC] injected Scratch GUI CSS via manifest:', css);
-      })
-      .catch(() => {
-        fetch(BASE + '/').then(r=>r.text()).then(html=>{
-          var re=/<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+\.css)["']/gi, m, hrefs=[];
-          while((m=re.exec(html))){ hrefs.push(m[1]); }
-          hrefs = hrefs.map(toAbs); hrefs.forEach(add);
-          console.log('[SASC] injected Scratch GUI CSS via HTML parse:', hrefs);
-        }).catch(e=>console.warn('[SASC] failed to inject demo CSS:', e));
-      });
-  })();
-  </script>
 </head>
 <body>
   <div id="app"></div>
@@ -67,32 +39,81 @@
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
 
-  <!-- asset hooks -->
+  <!-- asset hooks (local-first with fallback) -->
   <script>
-    (function(){
-      const base = location.pathname.replace(/\/[^/]*$/, '/'); const repoRoot=base.replace(/\/$/,'');
-      const toLocal = u => {
-        const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
-        return m ? repoRoot + '/static/assets/' + m[1] : null;
+  (function(){
+    const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
+    const repoRoot = base.replace(/\/$/, '');
+    const toLocalAsset = (u) => {
+      const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg))\/get\/?/i);
+      return m ? (repoRoot + '/static/assets/' + m[1]) : null;
+    };
+
+    // --- fetch: try local, then ORIGINAL ---
+    const f = window.fetch;
+    window.fetch = async function(input, init){
+      const url = (typeof input === 'string') ? input : (input && input.url);
+      const local = toLocalAsset(url);
+      if (local){
+        try {
+          const r = await f(local, init);
+          if (r && r.ok) {
+            console.log('[SASC] fetch local OK →', local);
+            return r;
+          }
+          console.log('[SASC] fetch local not OK ('+(r && r.status)+') → falling back:', url);
+        } catch (e) {
+          console.log('[SASC] fetch local error → falling back:', e);
+        }
+      }
+      return f.apply(this, arguments);
+    };
+
+    // --- XHR: try local, then retry ORIGINAL if local not 2xx ---
+    const XO = window.XMLHttpRequest;
+    window.XMLHttpRequest = function(){
+      const x = new XO();
+      let original = null;
+      let method   = 'GET';
+
+      const _open = x.open;
+      x.open = function(m,u){
+        method = m;
+        original = u;
+        const local = (typeof u === 'string') ? toLocalAsset(u) : null;
+
+        if (local){
+          _open.call(x, m, local);
+          const onload = function(){
+            if (x.status >= 200 && x.status < 300) {
+              console.log('[SASC] xhr local OK →', local);
+            } else {
+              console.log('[SASC] xhr local not OK ('+x.status+') → retrying ORIGINAL:', original);
+              x.removeEventListener('load', onload);
+              _open.call(x, method, original);
+              x.send();
+            }
+          };
+          x.addEventListener('load', onload);
+          return;
+        }
+        return _open.apply(x, arguments);
       };
-      const f = window.fetch;
-      window.fetch = async function(i,init){
-        const url=(typeof i==='string')?i:(i&&i.url);
-        const local=url&&toLocal(url);
-        if(local){__sascLog('[fetch] local-first: '+local+' (← '+url+')');const r=await f(local,init).catch(()=>null);if(r&&r.ok)return r;}
-        return f.apply(this,arguments);
-      };
-      const XO = XMLHttpRequest;
-      window.XMLHttpRequest = function(){const x=new XO();const op=x.open;x.open=function(m,u){
-        const local=typeof u==='string'?toLocal(u):null;
-        if(local){__sascLog('[xhr] local-first: '+local+' (← '+u+')');return op.call(x,m,local);}return op.apply(x,arguments);
-      };return x;};
-      __sascLog('[hooks] installed (assets local-first)');
-    })();
+
+      const _send = x.send;
+      x.send = function(){ return _send.apply(x, arguments); };
+
+      return x;
+    };
+
+    console.log('[hooks] installed (assets local-first with XHR fallback)');
+  })();
   </script>
 
+  <!-- Your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
 
+  <!-- Boot (default projectId=0) -->
   <script>
     (function(){
       try{
