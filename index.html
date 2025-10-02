@@ -3,39 +3,40 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (doctor+toolbar)</title>
+  <title>SASC Scratch Editor — index (doctor+store+toolbar)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:320px;max-height:45vh;background:#111a;backdrop-filter:blur(2px);
-      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+
+    /* SASC console */
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:340px;max-height:50vh;background:#111a;backdrop-filter:blur(2px);
+      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:100001}
     #sasc-console header{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(45vh - 32px)}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(50vh - 32px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
-    /* stage/controls safety */
+
+    /* CSS shim to keep layout usable even if demo CSS isn’t reachable */
     [class*="stage-wrapper"]{position:relative;z-index:0}
     [class*="stage-header"]{position:relative;z-index:2}
     [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
     canvas{cursor:default}
-    /* editor columns */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
     [class*="target-pane"]{min-width:240px;flex:0 0 240px}
     [class*="stage-wrapper"]{flex:0 0 auto}
-    /* modal on top */
     [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
     [class*="sprite-selector"] img{display:block}
     [class*="sprite-selector_add-button"],[class*="stage-selector_add-button"]{pointer-events:auto}
 
-    /* SASC toolbar */
-    #sasc-tools{position:fixed;top:10px;left:10px;z-index:100000;background:#021a;backdrop-filter:blur(2px);
+    /* SASC doctor toolbar */
+    #sasc-tools{position:fixed;top:10px;left:10px;z-index:100002;background:#021a;backdrop-filter:blur(2px);
       border:1px solid #044;border-radius:8px;color:#0ff;font:12px ui-monospace;display:flex;gap:6px;padding:6px}
     #sasc-tools button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
   </style>
 
-  <!-- try to pull demo CSS; if it 404s, our shim above keeps layout functional -->
+  <!-- Optional: try demo CSS; if it 404s we keep the shim -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -81,19 +82,30 @@
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
+
+  <!-- Tap Redux.createStore BEFORE GUI loads to capture the store -->
   <script>
-    (function(){
-      if (window.React && !window.react)      { window.react = window.React;      console.log('[SASC] react alias set');}
-      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; console.log('[SASC] react-dom alias set');}
-      if (window.Redux && !window.redux)      { window.redux = window.Redux;      console.log('[SASC] redux alias set');}
-      console.log('[SASC] href:', location.href);
-      console.log('[SASC] React present:', !!window.React, 'version:', window.React && window.React.version);
-      console.log('[SASC] ReactDOM present:', !!window.ReactDOM);
-      console.log('[SASC] Redux present:', !!window.Redux);
+    (function tapReduxStore(){
+      if (!window.Redux) return;
+      const origCreate = window.Redux.createStore;
+      window.Redux.createStore = function(){
+        const store = origCreate.apply(this, arguments);
+        window.__SASC_STORE = store;
+        try {
+          store.subscribe(() => {
+            const st = store.getState && store.getState();
+            if (st && st.scratchGui && st.scratchGui.vm && st.scratchGui.vm.runtime) {
+              window.__SASC_VM_FROM_STORE = st.scratchGui.vm;
+            }
+          });
+        } catch(_) {}
+        return store;
+      };
+      console.log('[SASC] Redux store tap installed');
     })();
   </script>
 
-  <!-- local-first hooks with fetch + XHR fallback -->
+  <!-- Local-first asset hooks with fetch + XHR fallback -->
   <script>
   (function(){
     const base = location.pathname.replace(/\/[^/]*$/, '/');
@@ -147,10 +159,10 @@
   })();
   </script>
 
-  <!-- your GUI bundle -->
+  <!-- Your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-index"></script>
 
-  <!-- mount GUI -->
+  <!-- Mount GUI -->
   <script>
   (function boot(){
     const log=m=>(window.__sascLog?__sascLog(m):console.log('[SASC]',m));
@@ -174,29 +186,42 @@
   })();
   </script>
 
-  <!-- SASC toolbar -->
+  <!-- Doctor toolbar -->
   <div id="sasc-tools">
-    <button id="btn-log">Log VM Targets</button>
+    <button id="btn-detect">Detect VM</button>
+    <button id="btn-subwait">Subscribe + Wait</button>
     <button id="btn-proj0">Force Project 0</button>
-    <button id="btn-sky">Try Add Blue Sky</button>
+    <button id="btn-sky">Add Blue Sky</button>
+    <button id="btn-list">List Targets</button>
   </div>
 
-  <!-- VM doctor + library diagnostics + toolbar handlers -->
+  <!-- Doctor logic -->
   <script>
   (function(){
-    const log=(m,o)=> (window.__sascLog?__sascLog(m+(o? ' '+JSON.stringify(o):'')):console.log('[SASC]',m,o||''));
-    const SKY1 = 'https://kotzem1977.github.io/sasc-scratch-editor/static/assets/e7c147730f19d284bcd7b3f00af19bb6.svg';
+    const SKY1='https://kotzem1977.github.io/sasc-scratch-editor/static/assets/e7c147730f19d284bcd7b3f00af19bb6.svg';
+    const log=(m,o)=> (window.__sascLog?__sascLog(m+(o?' '+JSON.stringify(o):'')):console.log('[SASC]',m,o||''));
 
-    // hunt the VM more aggressively
     function sniffVM(){
-      // direct
+      // 1) direct
       if (window.vm && window.vm.runtime) return window.vm;
       if (window.GUI && window.GUI.vm && window.GUI.vm.runtime) return window.GUI.vm;
-      // brute: scan window for object with {runtime:{targets:[]}} and addSprite
+
+      // 2) via tapped Redux store
+      const store = window.__SASC_STORE;
+      if (store && store.getState){
+        try{
+          const st = store.getState();
+          if (st && st.scratchGui && st.scratchGui.vm && st.scratchGui.vm.runtime){
+            return st.scratchGui.vm;
+          }
+        }catch(_){}
+      }
+
+      // 3) any global that looks like a VM
       for (const k in window){
         try{
           const v = window[k];
-          if (v && v.runtime && Array.isArray(v.runtime.targets) && typeof v.addSprite === 'function'){
+          if (v && v.runtime && Array.isArray(v.runtime.targets) && typeof v.addSprite==='function'){
             return v;
           }
         }catch(_){}
@@ -204,94 +229,90 @@
       return null;
     }
 
-    // force load project 0
+    function subscribeUntilVM(timeoutMs){
+      timeoutMs = timeoutMs || 30000;
+      return new Promise((resolve,reject)=>{
+        const t0 = Date.now();
+        const store = window.__SASC_STORE;
+        if (!store || !store.subscribe) return reject(new Error('No Redux store'));
+        const unsub = store.subscribe(()=>{
+          const st = store.getState && store.getState();
+          const vm = st && st.scratchGui && st.scratchGui.vm;
+          if (vm && vm.runtime){
+            window.__SASC_VM_FROM_STORE = vm;
+            unsub();
+            resolve(vm);
+          } else if (Date.now()-t0>timeoutMs){
+            unsub();
+            reject(new Error('VM not in store after '+timeoutMs+'ms'));
+          }
+        });
+      });
+    }
+
     async function forceProject0(vm){
       const url='https://projects.scratch.mit.edu/0?isScratch3=true';
       log('[rescue] forcing default project load from', {url});
-      const r = await fetch(url,{cache:'no-store'});
-      if (!r.ok) throw new Error('proj0 status '+r.status);
-      const json = await r.json();
+      const r=await fetch(url,{cache:'no-store'});
+      if(!r.ok) throw new Error('proj0 status '+r.status);
+      const json=await r.json();
       await vm.loadProject(json);
       log('[rescue] vm.loadProject(0) → OK');
     }
 
-    // add backdrop via GUI API if possible; else via vm import
     async function addBackdropFromURL(url){
       const GUI=window.GUI;
-      const r = await fetch(url,{cache:'no-store'});
+      const r=await fetch(url,{cache:'no-store'});
       if(!r.ok) throw new Error('sky fetch '+r.status);
-      const blob = await r.blob();
+      const blob=await r.blob();
       if (GUI && typeof GUI.handleBackdropUpload==='function'){
         await GUI.handleBackdropUpload(blob, blob.type || 'image/svg+xml');
         log('[lib] backdrop upload → OK');
         return;
       }
-      const vm = sniffVM();
-      if (!vm) throw new Error('vm missing for backdrop import');
-      const stage = vm.runtime.getTargetForStage();
-      if (!stage) throw new Error('no stage target');
-      // VM has helper in GUI normally; we fallback to costume import (supported by vm)
+      const vm = sniffVM(); if(!vm) throw new Error('vm missing for backdrop import');
+      const stage = vm.runtime.getTargetForStage(); if(!stage) throw new Error('no stage target');
       await vm.importSpriteCostume(blob, {targetId: stage.id});
       log('[vm] importSpriteCostume (backdrop) → OK');
     }
 
-    // long poll until VM appears; then ensure targets exist
-    (function waitForVM(){
-      const t0=Date.now();
-      const timer=setInterval(async ()=>{
-        const vm = sniffVM();
-        if (vm){
-          clearInterval(timer);
-          window.vm = vm; // cache for convenience
-          const ready = vm.runtime.targets && vm.runtime.targets.length>0;
-          log('[doctor] VM found; ready?', {ready, targets:(vm.runtime.targets||[]).length, waitedMs: Date.now()-t0});
-          if (!ready){
-            try { await forceProject0(vm); }
-            catch(e){ log('[rescue] load proj0 failed', {error:String(e)}); }
-          }
-        }else if (Date.now()-t0>30000){
-          clearInterval(timer);
-          log('[doctor] VM not found after 30s');
-        }
-      }, 250);
-    })();
-
-    // toolbar wiring
-    document.getElementById('btn-log').onclick = () => {
-      const vm=sniffVM();
-      if (!vm) return log('[tools] VM not found yet');
+    function listTargets(){
+      const vm = sniffVM(); if(!vm) return log('[tools] VM not found yet');
       const tgts = (vm.runtime.targets||[]).map(t=>({name:t.getName&&t.getName(), isStage:!!t.isStage}));
       log('[tools] targets', tgts);
+    }
+
+    // Buttons
+    document.getElementById('btn-detect').onclick = () => {
+      const vm = sniffVM();
+      if (vm) { window.vm = vm; log('[doctor] VM detected', {targets:(vm.runtime.targets||[]).length}); }
+      else log('[doctor] VM not detected (yet)');
+    };
+    document.getElementById('btn-subwait').onclick = async () => {
+      try {
+        const vm = await subscribeUntilVM(30000);
+        window.vm = vm;
+        log('[doctor] VM arrived via store subscription', {targets:(vm.runtime.targets||[]).length});
+      } catch(e) {
+        log('[doctor] store subscribe failed', {error:String(e)});
+      }
     };
     document.getElementById('btn-proj0').onclick = async () => {
-      const vm=sniffVM();
+      const vm = sniffVM();
       if (!vm) return log('[tools] VM not found yet');
       try{ await forceProject0(vm);}catch(e){ log('[tools] proj0 failed', {error:String(e)}); }
     };
     document.getElementById('btn-sky').onclick = async () => {
       try{ await addBackdropFromURL(SKY1);}catch(e){ log('[tools] add sky failed', {error:String(e)}); }
     };
+    document.getElementById('btn-list').onclick = listTargets;
 
-    // tap library helpers if present for clearer logs
-    (function tapLibraries(){
-      const GUI=window.GUI||{};
-      if (GUI.handleBackdropUpload){
-        const oldB=GUI.handleBackdropUpload;
-        GUI.handleBackdropUpload=async function(fileOrBlob,mime){
-          log('[lib] add backdrop upload', {mime: mime || (fileOrBlob&&fileOrBlob.type)});
-          try{const res=await oldB.apply(this,arguments);log('[lib] backdrop upload → OK');return res;}
-          catch(e){log('[lib] backdrop upload → FAIL',{error:String(e)});throw e;}
-        };
-      }
-      if (GUI.handleSpriteUpload){
-        const oldS=GUI.handleSpriteUpload;
-        GUI.handleSpriteUpload=async function(fileOrBlob){
-          log('[lib] add sprite upload');
-          try{const res=await oldS.apply(this,arguments);log('[lib] sprite upload → OK');return res;}
-          catch(e){log('[lib] sprite upload → FAIL',{error:String(e)});throw e;}
-        };
-      }
-    })();
+    // Auto-report at 30s if no VM
+    setTimeout(()=>{
+      const vm = sniffVM();
+      if (vm) log('[doctor] VM ready after wait', {targets:(vm.runtime.targets||[]).length});
+      else log('[doctor] VM still not found after 30s');
+    }, 30000);
   })();
   </script>
 </body>
