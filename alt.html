@@ -108,7 +108,29 @@
   </script>
 
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
-
+<script>
+(function bindVM(){
+  const log = (m)=> (window.__sascLog ? __sascLog(m) : console.log('[bind]', m));
+  let waited = 0;
+  const grab = () => {
+    const GUI = window.GUI || {};
+    return window.vm || GUI.vm || (typeof GUI.getVm === 'function' ? GUI.getVm() : null);
+  };
+  const t = setInterval(()=>{
+    const vm = grab();
+    if (vm && vm.runtime && vm.runtime.targets) {
+      window.vm = vm;
+      log('window.vm attached (targets='+vm.runtime.targets.length+')');
+      clearInterval(t);
+      return;
+    }
+    if ((waited += 250) > 15000) {
+      clearInterval(t);
+      log('could not attach vm (15s)');
+    }
+  }, 250);
+})();
+</script>
   <script>
     (function(){
       try{
