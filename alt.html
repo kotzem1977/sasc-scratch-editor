@@ -3,261 +3,231 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (force HOC mount)</title>
+  <title>SASC Scratch Editor — alt (stable-apple)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:340px;max-height:50vh;background:#111a;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:360px;max-height:50vh;background:#111a;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
-    #sasc-console header{display:flex;gap:8px;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0;flex-wrap:wrap}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(50vh - 44px)}
+    #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
+    #sasc-console header strong{margin-right:auto}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(50vh - 46px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
-    /* CSS shim (when demo CSS isn’t available) */
-    [class*="stage-wrapper"]{position:relative;z-index:0}
-    [class*="stage-header"]{position:relative;z-index:2}
-    [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
-    canvas{cursor:default}
+    #sasc-console button:hover{background:#033}
+
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
     [class*="target-pane"]{min-width:240px;flex:0 0 240px}
-    [class*="stage-wrapper"]{flex:0 0 auto}
+    [class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
+    [class*="stage-header"]{position:relative;z-index:2}
+    [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
+    canvas{cursor:default}
     [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
     [class*="sprite-selector"] img{display:block}
-    [class*="sprite-selector_add-button"],[class*="stage-selector_add-button"]{pointer-events:auto}
   </style>
-
-  <!-- Try demo CSS; if 404, we rely on the shim -->
-  <script>
-  (function loadScratchGuiCSS(){
-    var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
-    function add(h){var l=document.createElement('link');l.rel='stylesheet';l.href=h;document.head.appendChild(l);}
-    function abs(p){if(!p)return null; if(p.startsWith('http'))return p; if(p.startsWith('//'))return 'https:'+p; if(p.startsWith('/'))return ORIGIN+p; return BASE+'/'+p.replace(/^\.?\//,'');}
-    if(document.documentElement.hasAttribute('data-sasc-css-loaded')) return;
-    document.documentElement.setAttribute('data-sasc-css-loaded','1');
-    fetch(BASE+'/asset-manifest.json')
-      .then(r=>r.ok?r.json():Promise.reject())
-      .then(man=>{
-        var files=(man&&man.files)||{}, css=[];
-        Object.keys(files).forEach(k=>{if(/\.css$/.test(files[k]))css.push(files[k])});
-        if(Array.isArray(man.entrypoints)) man.entrypoints.forEach(ep=>{if(/\.css$/.test(ep))css.push(ep)});
-        css=Array.from(new Set(css)).map(abs); css.forEach(add);
-        console.log('[SASC] CSS via manifest:', css);
-      })
-      .catch(()=>{console.warn('[SASC] demo CSS manifest/links not available; using shim');});
-  })();
-  </script>
 </head>
 <body>
   <div id="app"></div>
 
-  <!-- SASC console -->
   <div id="sasc-console">
     <header>
       <strong>SASC</strong>
-      <button onclick="(document.querySelector('#sasc-console pre').textContent='SASC clear\n')">Clear</button>
+      <button id="btn-clear">Clear</button>
+      <button id="btn-apple">+ Apple (one click)</button>
+      <button id="btn-backdrop-sky">+ Blue Sky → Backdrop</button>
+      <button id="btn-targets">List Targets</button>
     </header>
     <pre>SASC clear
 </pre>
   </div>
   <script>
     (function(){
-      const pre=document.querySelector('#sasc-console pre');
-      window.__sascLog=(m)=>{try{pre.textContent+=m+'\n';pre.scrollTop=pre.scrollHeight}catch(_){}console.log(m)};
-      window.addEventListener('click',e=>__sascLog('[Click] '+e.target.tagName));
-      window.addEventListener('unhandledrejection',e=>__sascLog('[unhandledrejection]: '+(e.reason&&(e.reason.stack||e.reason))));
+      const pre = document.querySelector('#sasc-console pre');
+      document.getElementById('btn-clear').onclick = ()=>{ pre.textContent = 'SASC clear\n'; };
+      window.__sascLog = (m)=>{ try{ pre.textContent += m+'\n'; pre.scrollTop = pre.scrollHeight; }catch(_){} console.log(m); };
+      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
+      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
     })();
   </script>
 
-  <!-- React + Redux UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-  <script>
-    (function(){
-      if(window.React&&!window.react){window.react=window.React;__sascLog('[SASC] react alias set');}
-      if(window.ReactDOM&&!window['react-dom']){window['react-dom']=window.ReactDOM;__sascLog('[SASC] react-dom alias set');}
-      if(window.Redux&&!window.redux){window.redux=window.Redux;__sascLog('[SASC] redux alias set');}
-    })();
-  </script>
 
-  <!-- Local-first asset hooks -->
   <script>
   (function(){
-    const base=location.pathname.replace(/\/[^/]*$/,'/'), repoRoot=base.replace(/\/$/,'');
-    const toLocal=(u)=>{const m=u&&u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);return m?(repoRoot+'/static/assets/'+m[1]):null};
-    const f=window.fetch;
-    window.fetch=async function(i,init){const url=(typeof i==='string')?i:(i&&i.url);const local=toLocal(url);
-      if(local){try{const r=await f(local,init);if(r&&r.ok){console.log('[SASC] fetch local OK →',local);return r}console.log('[SASC] fetch local not OK →',url)}catch(e){console.log('[SASC] fetch local error →',e)}}
-      return f.apply(this,arguments)};
-    const XO=XMLHttpRequest;
-    window.XMLHttpRequest=function(){const x=new XO();let original=null,method='GET';const _open=x.open;
-      x.open=function(m,u){method=m;original=u;const local=(typeof u==='string')?toLocal(u):null;
-        if(local){_open.call(x,m,local);const onload=()=>{if(x.status>=200&&x.status<300){console.log('[SASC] xhr local OK →',local)}else{console.log('[SASC] xhr local not OK ('+x.status+') →',original);x.removeEventListener('load',onload);_open.call(x,method,original);x.send();}};x.addEventListener('load',onload);return;}
-        return _open.apply(x,arguments)};const _send=x.send;x.send=function(){return _send.apply(x,arguments)};return x};
-    __sascLog('[hooks] installed (assets local-first with XHR fallback)');
+    const base = location.pathname.replace(/\/[^/]*$/, '/');
+    const repoRoot = base.replace(/\/$/, '');
+    const toLocalAsset = (u) => {
+      const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);
+      return m ? (repoRoot + '/static/assets/' + m[1]) : null;
+    };
+    const f = window.fetch;
+    window.fetch = async function(input, init){
+      const url = (typeof input === 'string') ? input : (input && input.url);
+      const local = toLocalAsset(url);
+      if (local){
+        try {
+          const r = await f(local, init);
+          if (r && r.ok) { __sascLog('[hooks] fetch local OK → ' + local); return r; }
+          __sascLog('[hooks] fetch local ' + (r && r.status) + ' → fall back ' + url);
+        } catch (e){ __sascLog('[hooks] fetch local error → fall back ' + e); }
+      }
+      return f.apply(this, arguments);
+    };
+    const XO = window.XMLHttpRequest;
+    window.XMLHttpRequest = function(){
+      const x = new XO(); let original=null, method='GET';
+      const _open = x.open;
+      x.open = function(m,u){
+        method=m; original=u;
+        const local = (typeof u === 'string') ? toLocalAsset(u) : null;
+        if (local){
+          _open.call(x, m, local);
+          const onload = function(){
+            if (x.status>=200 && x.status<300){ __sascLog('[hooks] xhr local OK → ' + local); }
+            else { __sascLog('[hooks] xhr local '+x.status+' → retry ORIGINAL ' + original); x.removeEventListener('load', onload); _open.call(x, method, original); x.send(); }
+          };
+          x.addEventListener('load', onload);
+          return;
+        }
+        return _open.apply(x, arguments);
+      };
+      const _send = x.send; x.send = function(){ return _send.apply(x, arguments); };
+      __sascLog('[hooks] installed (assets local-first with XHR fallback)');
+      return x;
+    };
   })();
   </script>
 
-  <!-- Scratch GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
 
-
-  <!-- ✅ FORCE HOC MOUNT (skip GUI.render even if present) -->
   <script>
-  (function bootHOC(){
-    const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[boot]',m));
-    try{
-      const app=document.getElementById('app');
-      const GUI=window.GUI;
-      if(!GUI){log('ERROR: window.GUI missing');return;}
-      if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
+    (function(){
+      try{
+        const app=document.getElementById('app');
+        const GUI=window.GUI;
+        if (!GUI) { __sascLog('ERROR: window.GUI missing'); return; }
+        if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
 
-      let Wrapped=GUI.default||GUI.GUI||GUI;
-      if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
-      if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
-      if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
+        let Wrapped = GUI.default || GUI.GUI || GUI;
+        if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
+        if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+        if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
 
-      const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
-      const el=window.React.createElement(Wrapped,props);
-      window.ReactDOM.render(el,app);
-      log('GUI mounted via FORCED HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
-    }catch(e){(window.__sascLog||console.error)('BOOT ERROR: '+(e.stack||e));}
-  })();
+        const el = window.React.createElement(Wrapped, { isPlayerOnly:false, isFullScreen:false, canUseCloud:false,
+          projectId:(location.hash && /\d+/.test(location.hash)) ? undefined : '0' });
+        window.ReactDOM.render(el, app);
+        __sascLog('GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=0');
+      }catch(e){ __sascLog('BOOT ERROR: '+(e && e.message)); }
+    })();
   </script>
 
-  <!-- Sturdier VM binder (polls longer, multiple locations) -->
-  <script>
-  (function bindVM(){
-    const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[bind]',m));
-    function tryGrab(){
-      const GUI=window.GUI||{};
-      return window.vm
-          || GUI.vm
-          || (GUI.appTarget && GUI.appTarget.props && GUI.appTarget.props.vm) // some builds
-          || null;
-    }
-    let waited=0;
-    const t=setInterval(()=>{
-      const vm=tryGrab();
-      if(vm && vm.runtime && vm.runtime.targets){
-        window.vm=vm;
-        log('window.vm attached (targets='+(vm.runtime.targets.length||0)+')');
-        clearInterval(t);
-        return;
-      }
-      if((waited+=250)>20000){clearInterval(t);log('could not attach vm (20s)');}
-    },250);
-  })();
-  </script>
-
-  <!-- SASC tools (backdrop/costume/sound) -->
+  <!-- Same VM binder + Apple/Backdrop tools as index -->
   <script>
   (function(){
-    const log=(m)=> (window.__sascLog?__sascLog(m):console.log('[SASC]',m));
-    const warn=(m)=> (window.__sascLog?__sascLog(m):console.warn('[SASC]',m));
+    const APPLE_SVG = '3826a4091a33e4d26f87a2fac7cf796b.svg';
+    const SKY_SVG   = 'e7c147730f19d284bcd7b3f00af19bb6.svg';
 
-    // Buttons in header
-    (function ensureButtons(){
-      const header=document.querySelector('#sasc-console header'); if(!header) return;
-      if(document.getElementById('btn-add-sky-backdrop')) return;
-      const wrap=document.createElement('span'); wrap.style.marginLeft='6px';
-      wrap.innerHTML=[
-        '<button id="btn-add-sky-backdrop">Add Blue Sky as Backdrop</button>',
-        '<button id="btn-add-backdrop-prompt">Add Backdrop (md5.ext)…</button>',
-        '<button id="btn-add-costume-prompt">Add Costume to Selected…</button>',
-        '<button id="btn-add-sound-prompt">Add Sound to Selected…</button>'
-      ].join(' ');
-      header.appendChild(wrap);
-    })();
+    let vmRef = null;
+    function discoverVM(){
+      try{
+        if (window.vm && window.vm.runtime) return window.vm;
+        const GUI = window.GUI;
+        if (GUI) {
+          if (GUI.vm && GUI.vm.runtime) return GUI.vm;
+          if (GUI.store && GUI.store.getState){
+            const st = GUI.store.getState();
+            const maybe = st && st.scratchGui && st.scratchGui.vm;
+            if (maybe && maybe.runtime) return maybe;
+          }
+        }
+      }catch(_){}
+      return null;
+    }
+    const vmTimer = setInterval(()=>{
+      vmRef = discoverVM();
+      if (vmRef && vmRef.runtime) { window.vm = vmRef; __sascLog('VM attached'); clearInterval(vmTimer); }
+    }, 500);
 
-    function repoBase(){return location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'');}
-    function parseAsset(md5ext){const m=String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i);return m?{assetId:m[1],ext:m[2].toLowerCase()}:null;}
-    function stage(vm){return vm&&vm.runtime&&vm.runtime.getTargetForStage?vm.runtime.getTargetForStage():null;}
-    function selected(vm){if(!vm||!vm.runtime)return null;return vm.runtime.getEditingTarget&&vm.runtime.getEditingTarget()||stage(vm);}
-    function costumeObj(name,md5ext){const p=parseAsset(md5ext)||{ext:'png',assetId:''};return{name:name||('Costume '+md5ext.slice(0,6)),assetId:p.assetId,md5ext,dataFormat:(p.ext==='svg'?'svg':p.ext),rotationCenterX:240,rotationCenterY:180};}
-    function soundObj(name,md5ext,sampleRate){const p=parseAsset(md5ext)||{assetId:'',ext:'wav'};return{name:name||('Sound '+md5ext.slice(0,6)),assetId:p.assetId,md5ext,dataFormat:(p.ext==='wav'?'wav':p.ext),format:'',rate:sampleRate||44100,sampleCount:0};}
-
+    function repoBase(){ return location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, ''); }
+    function parseAsset(md5ext){ const m=String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{assetId:m[1],ext:m[2].toLowerCase()}:null; }
     async function fetchAsset(md5ext){
-      const local=repoBase()+'/static/assets/'+md5ext;
-      const p=parseAsset(md5ext); const mime = p && p.ext==='svg' ? 'image/svg+xml'
-                : p && (p.ext==='png'||p.ext==='jpg'||p.ext==='jpeg'||p.ext==='gif') ? ('image/'+(p.ext==='jpg'?'jpeg':p.ext))
-                : p && (p.ext==='wav'||p.ext==='mp3') ? ('audio/'+p.ext)
+      const local = repoBase() + '/static/assets/' + md5ext;
+      try{ const r=await fetch(local,{cache:'no-store'}); if(r.ok){ const arr=await r.arrayBuffer(); return makePayload(md5ext,arr); } }catch(_){}
+      const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/'; const r2=await fetch(cdn,{cache:'no-store'});
+      if(!r2.ok) throw new Error('CDN fetch '+r2.status); const arr=await r2.arrayBuffer(); return makePayload(md5ext,arr);
+    }
+    function makePayload(md5ext, arr){
+      const p = parseAsset(md5ext)||{ext:'svg'};
+      const mime = p.ext==='svg' ? 'image/svg+xml'
+                : p.ext==='png'||p.ext==='jpg'||p.ext==='jpeg'||p.ext==='gif' ? ('image/'+(p.ext==='jpg'?'jpeg':p.ext))
+                : p.ext==='wav'||p.ext==='mp3' ? ('audio/'+p.ext)
                 : 'application/octet-stream';
-      try{const r=await fetch(local,{cache:'no-store'});if(r.ok){const arr=await r.arrayBuffer();return{arrayBuffer:arr,blob:new Blob([arr],{type:mime}),mime};}warn('[asset] local '+md5ext+' not OK');}
-      catch(e){warn('[asset] local fetch failed: '+e);}
-      const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-      const r2=await fetch(cdn,{cache:'no-store'}); if(!r2.ok) throw new Error('CDN fetch '+r2.status);
-      const arr=await r2.arrayBuffer(); return{arrayBuffer:arr,blob:new Blob([arr],{type:mime}),mime};
+      return { arrayBuffer: arr, blob: new Blob([arr], {type:mime}), mime };
+    }
+    function costumeObj(name, md5ext){
+      const p = parseAsset(md5ext)||{ext:'png',assetId:''};
+      return { name:name||('Costume '+md5ext.slice(0,6)), assetId:p.assetId, md5ext, dataFormat:(p.ext==='svg'?'svg':p.ext), rotationCenterX:240, rotationCenterY:180 };
+    }
+    function stage(vm){ return vm && vm.runtime && vm.runtime.getTargetForStage ? vm.runtime.getTargetForStage() : null; }
+
+    async function addApple(){
+      const vm = vmRef || discoverVM();
+      if (!vm || !vm.addSprite) { __sascLog('[tools] vm not ready for addSprite'); return; }
+      try {
+        const asset = await fetchAsset(APPLE_SVG);
+        await vm.addSprite(new Uint8Array(asset.arrayBuffer));
+        __sascLog('[tools] Apple sprite added');
+      } catch(e){ __sascLog('[tools] Apple add failed: ' + (e && e.message || e)); }
     }
 
-    async function addBackdropSmart(name,md5ext){
-      const vm=window.vm, GUI=window.GUI; if(!vm) throw new Error('vm missing');
-      const asset=await fetchAsset(md5ext); const isSVG=/\.svg$/i.test(md5ext); const cos=costumeObj(name,md5ext);
-      if(GUI&&typeof GUI.handleBackdropUpload==='function'){
-        try{log('[backdrop] GUI.handleBackdropUpload'); await GUI.handleBackdropUpload(asset.blob,isSVG?'image/svg+xml':'image/png'); log('[backdrop] success via GUI'); return;}
-        catch(e){warn('[backdrop] GUI.handleBackdropUpload failed: '+(e&&e.message||e));}
-      }
-      if(typeof vm.addBackdrop==='function'){
-        try{log('[backdrop] vm.addBackdrop'); await vm.addBackdrop(md5ext,cos); log('[backdrop] success via vm.addBackdrop'); return;}
-        catch(e){warn('[backdrop] vm.addBackdrop failed: '+(e&&e.message||e));}
-      }
-      const st=stage(vm); if(!st) throw new Error('No stage target');
-      if(typeof vm.addCostume==='function'){
-        try{log('[backdrop] vm.addCostume(costume,stage.id)'); await vm.addCostume(cos,st.id); log('[backdrop] success via vm.addCostume(A)'); return;}
-        catch(e1){warn('[backdrop] signature A failed: '+(e1&&e1.message||e1));
-          try{log('[backdrop] vm.addCostume(md5ext,costume,stage.id)'); await vm.addCostume(md5ext,cos,st.id); log('[backdrop] success via vm.addCostume(B)'); return;}
-          catch(e2){warn('[backdrop] signature B failed: '+(e2&&e2.message||e2));}}
-      }
-      throw new Error('All backdrop strategies failed');
+    async function addSkyAsBackdrop(){
+      const vm = vmRef || discoverVM();
+      if (!vm) { __sascLog('[tools] VM not found yet'); return; }
+      const st = stage(vm);
+      if (!st) { __sascLog('[tools] No stage target'); return; }
+      const cos = costumeObj('Blue Sky', SKY_SVG);
+      try{
+        if (typeof vm.addBackdrop === 'function'){ await vm.addBackdrop(SKY_SVG, cos); __sascLog('[tools] Blue Sky backdrop via vm.addBackdrop ✅'); return; }
+      }catch(e){ __sascLog('[tools] vm.addBackdrop failed: ' + (e && e.message || e)); }
+      try{
+        if (typeof vm.addCostume === 'function'){ await vm.addCostume(cos, st.id); __sascLog('[tools] Blue Sky backdrop via vm.addCostume ✅'); return; }
+      }catch(e){ __sascLog('[tools] vm.addCostume(stage) failed: ' + (e && e.message || e)); }
+      try{
+        const asset = await fetchAsset(SKY_SVG);
+        const storage = vm.runtime && vm.runtime.storage; if (!storage) throw new Error('No VM storage');
+        const p = parseAsset(SKY_SVG)||{ext:'svg', assetId:''};
+        const type = (p.ext==='svg') ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
+        storage.createAsset(type, p.ext, new Uint8Array(asset.arrayBuffer), p.assetId);
+        st.sprite.costumes.push(cos);
+        const idx = st.sprite.costumes.length - 1;
+        if (vm.renderer) {
+          if (p.ext==='svg' && vm.renderer.createSVGSkin) {
+            const text = await asset.blob.text(); const skinId = vm.renderer.createSVGSkin(text);
+            st.setCostume(idx); vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
+          } else if (vm.renderer.createBitmapSkin) {
+            const bmp = await createImageBitmap(asset.blob); const skinId = vm.renderer.createBitmapSkin(bmp, 1);
+            st.setCostume(idx); vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
+          } else {
+            st.setCostume(idx);
+          }
+        } else { st.setCostume(idx); }
+        try { vm.runtime.emit('PROJECT_CHANGED'); } catch(_){}
+        __sascLog('[tools] Blue Sky backdrop via manual injection ✅');
+      }catch(e){ __sascLog('[tools] manual backdrop failed: ' + (e && e.message || e)); }
     }
 
-    async function addCostumeToSelectedSmart(name,md5ext){
-      const vm=window.vm, GUI=window.GUI; if(!vm) throw new Error('vm missing');
-      const t=selected(vm); if(!t) throw new Error('No editing target (select a sprite or the stage)');
-      const asset=await fetchAsset(md5ext); const isSVG=/\.svg$/i.test(md5ext); const cos=costumeObj(name,md5ext);
-      if(GUI&&typeof GUI.handleCostumeUpload==='function'){
-        try{log('[costume] GUI.handleCostumeUpload'); await GUI.handleCostumeUpload(asset.blob,isSVG?'image/svg+xml':'image/png',t.id); log('[costume] success via GUI'); return;}
-        catch(e){warn('[costume] GUI.handleCostumeUpload failed: '+(e&&e.message||e));}
-      }
-      if(typeof vm.addCostume==='function'){
-        try{await vm.addCostume(cos,t.id); log('[costume] success via vm.addCostume(A)'); return;}
-        catch(e1){warn('[costume] signature A failed: '+(e1&&e.message||e1));
-          try{await vm.addCostume(md5ext,cos,t.id); log('[costume] success via vm.addCostume(B)'); return;}
-          catch(e2){warn('[costume] signature B failed: '+(e2&&e.message||e2));}}
-      }
-      throw new Error('Costume strategies unavailable in this build');
-    }
-
-    async function addSoundToSelectedSmart(name,md5ext){
-      const vm=window.vm, GUI=window.GUI; if(!vm) throw new Error('vm missing');
-      const t=selected(vm); if(!t) throw new Error('No editing target');
-      const asset=await fetchAsset(md5ext); const snd=soundObj(name,md5ext);
-      if(GUI&&typeof GUI.handleSoundUpload==='function'){
-        try{log('[sound] GUI.handleSoundUpload'); await GUI.handleSoundUpload(asset.blob,t.id); log('[sound] success via GUI'); return;}
-        catch(e){warn('[sound] GUI.handleSoundUpload failed: '+(e&&e.message||e));}
-      }
-      if(typeof vm.addSound==='function'){
-        try{await vm.addSound(md5ext,snd,t.id); log('[sound] success via vm.addSound'); return;}
-        catch(e){warn('[sound] vm.addSound failed: '+(e&&e.message||e));}
-      }
-      throw new Error('No sound upload API available in this build');
-    }
-
-    // Wire buttons (+ auto-select Stage before backdrop)
-    (function wire(){
-      const ensureStage=()=>{const vm=window.vm; if(!vm) return; const st=vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage(); if(st){try{vm.setEditingTarget(st.id);}catch(_){}}};
-      const btnSky=document.getElementById('btn-add-sky-backdrop');
-      const btnBackdrop=document.getElementById('btn-add-backdrop-prompt');
-      const btnCostume=document.getElementById('btn-add-costume-prompt');
-      const btnSound=document.getElementById('btn-add-sound-prompt');
-
-      if(btnSky) btnSky.onclick=async()=>{try{ensureStage(); await addBackdropSmart('Blue Sky','e7c147730f19d284bcd7b3f00af19bb6.svg');}catch(e){warn('[tools] add sky failed: '+(e&&e.message||e));}};
-      if(btnBackdrop) btnBackdrop.onclick=async()=>{const md5ext=prompt('Backdrop md5.ext (svg/png):'); if(!md5ext) return; const name=prompt('Backdrop name:','Backdrop '+md5ext.slice(0,6))||'Backdrop'; try{ensureStage(); await addBackdropSmart(name,md5ext.trim());}catch(e){warn('[tools] add backdrop failed: '+(e&&e.message||e));}};
-      if(btnCostume) btnCostume.onclick=async()=>{const md5ext=prompt('Costume md5.ext (svg/png):'); if(!md5ext) return; const name=prompt('Costume name:','Costume '+md5ext.slice(0,6))||'Costume'; try{await addCostumeToSelectedSmart(name,md5ext.trim());}catch(e){warn('[tools] add costume failed: '+(e&&e.message||e));}};
-      if(btnSound) btnSound.onclick=async()=>{const md5ext=prompt('Sound md5.ext (wav/mp3):'); if(!md5ext) return; const name=prompt('Sound name:','Sound '+md5ext.slice(0,6))||'Sound'; try{await addSoundToSelectedSmart(name,md5ext.trim());}catch(e){warn('[tools] add sound failed: '+(e&&e.message||e));}};
-    })();
+    document.getElementById('btn-apple').onclick = addApple;
+    document.getElementById('btn-backdrop-sky').onclick = addSkyAsBackdrop;
+    document.getElementById('btn-targets').onclick = ()=>{
+      const vm = vmRef || discoverVM();
+      if (!vm || !vm.runtime || !vm.runtime.targets){ __sascLog('[targets] VM not ready'); return; }
+      const ts = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ') + (t.getName ? t.getName() : t.sprite && t.sprite.name));
+      __sascLog('[targets] ' + vm.runtime.targets.length + ' targets\n- ' + ts.join('\n- '));
+    };
   })();
   </script>
 </body>
