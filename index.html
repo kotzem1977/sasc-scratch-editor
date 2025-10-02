@@ -10,7 +10,7 @@
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
-    /* SASC console (light by default) */
+    /* SASC console — light by default for readability */
     #sasc-console{position:fixed;left:10px;bottom:10px;width:560px;max-height:60vh;background:#fff;color:#111;
       font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #89a;border-radius:8px;z-index:99999}
     #sasc-console:not([data-theme="light"]){background:#0b0e;color:#0ff;border-color:#044}
@@ -55,7 +55,7 @@
         <button id="btn-lib-sound">Sound Library</button>
       </span>
       <span class="btnrow">
-        <!-- Generic: add by md5 / by file (works even if libraries don’t) -->
+        <!-- Generic: add by md5 / by file -->
         <button id="btn-sprite-b">Add Sprite by md5</button>
         <button id="btn-sprite-c">Add Sprite from file</button>
         <button id="btn-bg-b">Backdrop by md5</button>
@@ -64,7 +64,7 @@
         <button id="btn-snd-c">Sound from file</button>
       </span>
       <span class="btnrow">
-        <!-- Diagnostic apples (you can ignore these if you want) -->
+        <!-- Diagnostic apples -->
         <button id="btn-apple-a">Apple A</button>
         <button id="btn-apple-b">Apple B</button>
         <button id="btn-apple-c">Apple C</button>
@@ -78,16 +78,16 @@
   <input id="file-image" type="file" accept=".svg,.png,.jpg,.jpeg,.gif,image/*" style="display:none"/>
   <input id="file-sound" type="file" accept=".wav,.mp3,audio/*" style="display:none"/>
 
-  <!-- 1) Console wiring -->
+  <!-- Console wiring -->
   <script>
     (function(){
       const pre=document.querySelector('#sasc-console pre');
       const box=document.getElementById('sasc-console');
-      const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
+      const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
       window.__sascLog=(m)=>out('',m);
       window.__sascTag=(t,m)=>out(t,m);
 
-      document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
+      document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\\n'; };
       document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
       document.getElementById('btn-copy').onclick=async()=>{
         try{ await navigator.clipboard.writeText(pre.textContent); out('SASC','log copied to clipboard'); }
@@ -108,7 +108,7 @@
     })();
   </script>
 
-  <!-- 2) React UMDs -->
+  <!-- React UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
@@ -120,24 +120,34 @@
     })();
   </script>
 
-  <!-- 3) Local-first hooks for internalapi assets -->
+  <!-- Local-first hooks for internalapi assets (kept, but gentle) -->
   <script>
     (function(){
-      const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
-      const toLocal=u=>{ const m=u&&u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i); return m?(repoRoot+'/static/assets/'+m[1]):null; };
-      const f=window.fetch;
+      const base=location.pathname.replace(/\\/[^/]*$/,'/'); const repoRoot=base.replace(/\\/$/,'');
+      const toLocal=u=>{ const m=u&&u.match(/internalapi\\/asset\\/([a-f0-9]{32}\\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\\/get\\/?/i); return m?(repoRoot+'/static/assets/'+m[1]):null; };
+      const realFetch=window.fetch;
       window.fetch=async function(i,init){
         const url=(typeof i==='string')?i:(i&&i.url);
         const local=toLocal(url);
-        if(local){ try{ const r=await f(local,init); if(r&&r.ok) return r; }catch(_){ } }
-        return f.apply(this,arguments);
+        if(local){
+          try{
+            const r=await realFetch(local,init);
+            if(r&&r.ok) return r;
+          }catch(_){}
+          // fall through to original URL if local fails
+        }
+        return realFetch.apply(this,arguments);
       };
       const XO=XMLHttpRequest;
       window.XMLHttpRequest=function(){
         const x=new XO(); const _open=x.open; let original=null,method='GET';
-        x.open=function(m,u){ method=m; original=u; const local=(typeof u==='string')?toLocal(u):null;
-          if(local){ _open.call(x,m,local); const onload=()=>{ if(!(x.status>=200&&x.status<300)){ x.removeEventListener('load',onload); _open.call(x,method,original); x.send(); } };
-            x.addEventListener('load',onload); return; }
+        x.open=function(m,u){
+          method=m; original=u; const local=(typeof u==='string')?toLocal(u):null;
+          if(local){
+            _open.call(x,m,local);
+            const onload=()=>{ if(!(x.status>=200&&x.status<300)){ x.removeEventListener('load',onload); _open.call(x,method,original); x.send(); } };
+            x.addEventListener('load',onload); return;
+          }
           return _open.apply(x,arguments);
         };
         return x;
@@ -146,10 +156,10 @@
     })();
   </script>
 
-  <!-- 4) Your GUI bundle -->
-  <script src="scratch-gui.js?v=finder-003"></script>
+  <!-- Your GUI bundle (keep version tag to bust caches when you change it) -->
+  <script src="scratch-gui.js?v=hardrefresh-8"></script>
 
-  <!-- 5) Mount the GUI -->
+  <!-- Mount the GUI -->
   <script>
     (function mount(){
       try{
@@ -166,7 +176,7 @@
           if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
           if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
           if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
-          const props = {isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+          const props = {isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\\d+/.test(location.hash))?undefined:'0'};
           const el = window.React.createElement(Wrapped, props);
           window.ReactDOM.render(el, app);
           __sascTag('SASC','GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
@@ -175,7 +185,7 @@
     })();
   </script>
 
-  <!-- 6) VM binder -->
+  <!-- VM binder (fiber scan + store subscribe + observer) -->
   <script>
     (function(){
       function fiberKeyOf(n){ if(!n) return null; for(const k in n){ if(k.startsWith('__reactFiber$')||k.startsWith('__reactInternalInstance$')) return k; } return null; }
@@ -227,127 +237,320 @@
       document.getElementById('btn-bind').onclick=()=>bindVM(10000);
     })();
   </script>
-
-  <!-- 7) Helpers / actions -->
+  <!-- Helpers: asset I/O, storage, renderer skins, and robust actions -->
   <script>
-    /* ---------------- constants ---------------- */
-    const APPLE_MD5EXT   = '3826a4091a33e4d26f87a2fac7cf796b.svg';   // Apple costume
-    const SKY_MD5EXT     = 'e7c147730f19d284bcd7b3f00af19bb6.svg';   // Blue Sky backdrop
-    const MEOW_MD5EXT    = '83c36d806dc92327b9e7049a565c6bff.wav';   // Meow sound
-
-    /* ---------------- util: DOM & log ---------------- */
-    function downloadBlob(name, text){
-      const blob=new Blob([text],{type:'text/plain'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    }
-
-    /* ---------------- asset helpers ---------------- */
-    function costumeFromMd5(name, md5ext){
-      const isSVG = /\.svg$/i.test(md5ext);
-      const assetId = md5ext.slice(0,32);
-      return {
-        name: name || ('Costume '+md5ext.slice(0,6)),
-        assetId,
-        md5ext,
-        dataFormat: isSVG ? 'svg' : 'png',
-        rotationCenterX: 240,
-        rotationCenterY: 180,
-        ...(isSVG ? {} : {bitmapResolution:2})
-      };
+    /* ---------- asset helpers ---------- */
+    function md5FromMd5ext(md5ext){ return String(md5ext||'').slice(0,32); }
+    function isSvgExt(s){ return /\.svg$/i.test(s||''); }
+    function extOf(md5ext){ const m=String(md5ext||'').split('.').pop()||''; return m.toLowerCase(); }
+    function mimeFromExt(ext){
+      if(ext==='svg')return'image/svg+xml'; if(ext==='png')return'image/png';
+      if(ext==='jpg'||ext==='jpeg')return'image/jpeg'; if(ext==='gif')return'image/gif';
+      if(ext==='wav')return'audio/wav'; if(ext==='mp3')return'audio/mpeg';
+      return'application/octet-stream';
     }
 
     async function fetchAsset(md5ext){
-      const ext = md5ext.split('.').pop().toLowerCase();
-      const isSVG = ext === 'svg';
-      const base = location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'');
-      const local = base + '/static/assets/' + md5ext;
+      const ext = extOf(md5ext);
+      const local = location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'') + '/static/assets/' + md5ext;
+
       async function read(res){
         const buf = await res.arrayBuffer();
-        const blob = new Blob([buf], {type: isSVG ? 'image/svg+xml' :
-                                             ext==='png' ? 'image/png' :
-                                             (ext==='jpg'||ext==='jpeg') ? 'image/jpeg' :
-                                             ext==='gif' ? 'image/gif' :
-                                             ext==='wav' ? 'audio/wav' :
-                                             ext==='mp3' ? 'audio/mp3' :
-                                             'application/octet-stream'});
-        const text = isSVG ? await (new Response(blob)).text() : null;
-        return {buf, blob, text, ext, isSVG};
+        const blob = new Blob([buf], {type:mimeFromExt(ext)});
+        const text = (ext==='svg') ? await (new Response(blob)).text() : null;
+        return {buf, blob, text, ext, isSVG:(ext==='svg'), md5ext};
       }
-      try{ const rLocal=await fetch(local,{cache:'no-store'}); if(rLocal.ok) return read(rLocal);}catch(_){}
-      const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
-      const rCdn=await fetch(cdn,{cache:'no-store'}); if(!rCdn.ok) throw new Error('CDN '+rCdn.status);
-      return read(rCdn);
+
+      // local-first
+      try { const r = await fetch(local, {cache:'no-store'}); if(r.ok) return read(r); } catch(_){}
+      // CDN fallback
+      const cdn = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
+      const r2 = await fetch(cdn, {cache:'no-store'});
+      if(!r2.ok) throw new Error('CDN '+r2.status);
+      return read(r2);
     }
 
-    async function readLocalFile(file){
-      const ext=(file.name.split('.').pop()||'').toLowerCase();
-      const isSVG = ext==='svg';
-      const buf = await file.arrayBuffer();
-      const blob = new Blob([buf],{type:file.type|| (isSVG?'image/svg+xml':'application/octet-stream')});
-      const text = isSVG ? await (new Response(blob)).text() : null;
-      return {buf, blob, text, ext, isSVG, localName:file.name};
+    function costumeModel(name, md5ext){
+      const assetId = md5FromMd5ext(md5ext);
+      const svg = isSvgExt(md5ext);
+      return {
+        name: name || ('Costume '+md5ext.slice(0,6)),
+        assetId, md5ext,
+        dataFormat: svg?'svg':'png',
+        rotationCenterX: 240, rotationCenterY: 180,
+        ...(svg?{}:{bitmapResolution:2})
+      };
     }
 
-    function emitUiUpdates(vm){
+    function emitUi(vm){
       try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
       try{ vm.runtime.emit('targetsUpdate'); }catch(_){}
       try{ vm.emit && vm.emit('targetsUpdate'); }catch(_){}
-      try{ vm.runtime.requestRedraw && vm.runtime.requestRedraw(); }catch(_){}
+      try{ vm.runtime.requestTargetsUpdate && vm.runtime.requestTargetsUpdate(); }catch(_){}
+      try{ vm.renderer && vm.renderer.draw && vm.renderer.draw(); }catch(_){}
+      try{ vm.renderer && (vm.renderer.dirty = true); }catch(_){}
     }
 
-    function getSprites(vm){ return (vm.runtime.targets||[]).filter(t=>!t.isStage); }
-    async function waitForNewSprite(vm, prevCount, name, timeout=2000){
-      const t0=performance.now();
-      while(performance.now()-t0<timeout){
-        const sprites=getSprites(vm);
-        if(sprites.length>prevCount){
-          const byName=name?sprites.find(s=> (s.getName?s.getName():s.sprite?.name) === name):null;
-          return byName || sprites[sprites.length-1];
-        }
-        await new Promise(r=>setTimeout(r,50));
-      }
-      return null;
-    }
-
-    async function applyCostumeToTarget(vm, target, md5ext, asset, opts={}){
-      const storage = vm.runtime?.storage; if(!storage) throw new Error('No VM storage');
-      const id = md5ext.slice(0,32);
+    async function storeImageAsset(vm, asset){
+      const storage = vm.runtime?.storage;
+      if(!storage) throw new Error('No VM storage');
+      const id = md5FromMd5ext(asset.md5ext);
       const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
       storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
+      return id;
+    }
 
-      const costume = costumeFromMd5(opts.name || null, md5ext);
-      let idx=0;
-      if (opts.replaceAll) { target.sprite.costumes = [costume]; idx=0; }
-      else { target.sprite.costumes.push(costume); idx=target.sprite.costumes.length-1; }
+    async function applySkin(vm, target, asset){
+      if(!vm.renderer || target.drawableID == null) return;
+      if(asset.isSVG && vm.renderer.createSVGSkin){
+        const svgText = asset.text ?? await (new Response(asset.blob)).text();
+        const skinId = vm.renderer.createSVGSkin(svgText);
+        vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+      }else if(!asset.isSVG && vm.renderer.createBitmapSkin){
+        const bmp = await createImageBitmap(asset.blob);
+        const skinId = vm.renderer.createBitmapSkin(bmp, 1);
+        vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+      }
+      // mark dirty
+      try{ vm.renderer._doExitDrawRegion && vm.renderer._doExitDrawRegion(); }catch(_){}
+    }
 
-      await new Promise(r=>requestAnimationFrame(r)); // ensure drawable exists
+    /* ---------- robust costume injection WITHOUT nuking list (#1, #2) ---------- */
+    async function addCostumeToTarget(vm, target, name, md5ext, asset){
+      await storeImageAsset(vm, asset);
 
-      let skinId=null;
-      if (vm.renderer && target.drawableID != null) {
-        if (asset.isSVG && vm.renderer.createSVGSkin) {
-          const svgText = asset.text ?? await (new Response(asset.blob)).text();
-          try{ skinId = vm.renderer.createSVGSkin(svgText, costume.rotationCenterX, costume.rotationCenterY); }
-          catch(_){ skinId = vm.renderer.createSVGSkin(svgText); }
-        } else if (!asset.isSVG && vm.renderer.createBitmapSkin) {
-          const bmp = await createImageBitmap(asset.blob);
-          skinId = vm.renderer.createBitmapSkin(bmp, 1);
-        }
-        if (skinId != null) {
-          if (typeof vm.renderer.updateDrawableSkinId === 'function') {
-            vm.renderer.updateDrawableSkinId(target.drawableID, skinId);
-          } else if (typeof vm.renderer.updateDrawableProperties === 'function') {
-            vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+      // push a new costume (do NOT replace the whole array to preserve thumbnails)
+      const model = costumeModel(name, md5ext);
+      if(!target.sprite.costumes) target.sprite.costumes = [];
+      target.sprite.costumes.push(model);
+      // switch to it
+      target.setCostume(target.sprite.costumes.length-1);
+
+      // renderer skin to stage immediately
+      await applySkin(vm, target, asset);
+
+      emitUi(vm);
+    }
+
+    /* ---------- robust backdrop add (#1..#3) ---------- */
+    async function addBackdropSmart(name, md5ext){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) throw new Error('vm missing');
+      const stage = vm.runtime.getTargetForStage?.();
+      if(!stage) throw new Error('No stage target');
+
+      const asset = await fetchAsset(md5ext);
+
+      // try GUI helper
+      const GUI = window.GUI;
+      if(GUI?.handleBackdropUpload){
+        try{
+          await GUI.handleBackdropUpload(asset.blob, asset.isSVG?'image/svg+xml':'image/png');
+          __sascTag('backdrop','added via GUI.handleBackdropUpload');
+          return;
+        }catch(e){ __sascTag('backdrop','GUI helper failed: '+(e&&e.message||e)); }
+      }
+
+      // try VM helper
+      if(typeof vm.addBackdrop === 'function'){
+        try{
+          await storeImageAsset(vm, asset);
+          await vm.addBackdrop(md5ext, costumeModel(name, md5ext));
+          __sascTag('backdrop','added via vm.addBackdrop');
+          emitUi(vm);
+          return;
+        }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
+      }
+
+      // manual: push into stage costumes (do not replace all)
+      await addCostumeToTarget(vm, stage, name, md5ext, asset);
+      __sascTag('backdrop','added via manual stage injection');
+    }
+
+    /* ---------- robust sprite creation (#1..#4) ---------- */
+    async function addSpriteFromMd5(name, md5ext){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) throw new Error('vm missing');
+      const asset = await fetchAsset(md5ext);
+
+      // Path 1: vm.addSprite JSON
+      if(typeof vm.addSprite === 'function'){
+        try{
+          await storeImageAsset(vm, asset);
+          const spriteObj = {
+            isStage:false,
+            name: name || 'New Sprite',
+            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+            currentCostume:0,
+            costumes:[costumeModel(name, md5ext)],
+            sounds:[],
+            volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+            draggable:false, rotationStyle:"all around"
+          };
+          const id = await vm.addSprite(JSON.stringify(spriteObj));
+          const tgt = (vm.runtime.targets||[]).find(t=>t.id===id);
+          if(tgt){
+            await applySkin(vm, tgt, asset);
+            __sascTag('appleA','sprite created via vm.addSprite');
+            emitUi(vm);
+            return tgt;
           }
+        }catch(e){ __sascTag('appleA','vm.addSprite failed: '+(e&&e.message||e)); }
+      }
+
+      // Path 2: duplicate first sprite and swap costume (B)
+      const sprites = (vm.runtime.targets||[]).filter(t=>!t.isStage);
+      if(sprites.length && typeof vm.duplicateSprite === 'function'){
+        try{
+          const baseId = sprites[0].id;
+          const newId = await vm.duplicateSprite(baseId);
+          const tgt = (vm.runtime.targets||[]).find(t=>t.id===newId);
+          if(!tgt) throw new Error('duplicate ok but target not found');
+          try{ await vm.renameSprite(newId, name||'New Sprite'); }catch(_){ if(tgt.sprite) tgt.sprite.name = name||'New Sprite'; }
+          await addCostumeToTarget(vm, tgt, name, md5ext, asset);  // push new costume + skin
+          __sascTag('appleB','sprite created via duplicate+swap');
+          return tgt;
+        }catch(e){ __sascTag('appleB','duplicate path failed: '+(e&&e.message||e)); }
+      }
+
+      // Path 3: force-create via low-level VM targets (C)
+      try{
+        await storeImageAsset(vm, asset);
+        // Create a minimal sprite from Scratch "sprite3" structure
+        const model = {
+          isStage:false,
+          name: name || 'New Sprite',
+          variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+          currentCostume:0,
+          costumes:[costumeModel(name, md5ext)],
+          sounds:[],
+          volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+          draggable:false, rotationStyle:"all around"
+        };
+        // Some builds expose fromJSON; if not, addSprite above would have worked.
+        if(vm.runtime && vm.runtime.addSprite2){
+          const id = await vm.runtime.addSprite2(model);
+          const tgt=(vm.runtime.targets||[]).find(t=>t.id===id);
+          if(tgt){ await applySkin(vm, tgt, asset); __sascTag('appleC','sprite created via runtime.addSprite2'); emitUi(vm); return tgt; }
+        }
+      }catch(e){ __sascTag('appleC','low-level create failed: '+(e&&e.message||e)); }
+
+      throw new Error('No sprite creation path available in this build');
+    }
+
+    /* ---------- selected target helpers ---------- */
+    function getEditingTarget(vm){
+      return vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
+    }
+
+    /* ---------- add costume to selected ---------- */
+    async function addCostumeToSelected(name, md5ext){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) throw new Error('vm missing');
+      const t = getEditingTarget(vm);
+      if(!t) throw new Error('No editing target');
+      const asset = await fetchAsset(md5ext);
+
+      // GUI helper first
+      const GUI = window.GUI;
+      if(GUI?.handleCostumeUpload){
+        try{
+          await GUI.handleCostumeUpload(asset.blob, asset.isSVG?'image/svg+xml':'image/png', t.id);
+          __sascTag('costume','success via GUI.handleCostumeUpload');
+          return;
+        }catch(e){ __sascTag('costume','GUI helper failed: '+(e&&e.message||e)); }
+      }
+
+      // VM helper
+      if(typeof vm.addCostume === 'function'){
+        try{
+          await storeImageAsset(vm, asset);
+          await vm.addCostume(costumeModel(name, md5ext), t.id);
+          await applySkin(vm, t, asset);
+          __sascTag('costume','success via vm.addCostume (+skin)');
+          emitUi(vm);
+          return;
+        }catch(e){ __sascTag('costume','vm.addCostume failed: '+(e&&e.message||e)); }
+      }
+
+      // Manual, guaranteed
+      await addCostumeToTarget(vm, t, name, md5ext, asset);
+      __sascTag('costume','success via manual injection');
+    }
+
+    /* ---------- sounds (best-effort; many builds restrict programmatic add) ---------- */
+    async function addSoundToSelected(name, md5ext){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) throw new Error('vm missing');
+      const t = getEditingTarget(vm);
+      if(!t) throw new Error('No editing target');
+
+      const GUI = window.GUI;
+      // md5 path: try to fetch; if local 404s, GUI library is recommended
+      if(md5ext){
+        let asset=null;
+        try{ asset = await fetchAsset(md5ext); }catch(_){/* fall through */ }
+        if(asset && GUI?.handleSoundUpload){
+          try{
+            await GUI.handleSoundUpload(asset.blob, t.id);
+            __sascTag('sound','added via GUI.handleSoundUpload');
+            return;
+          }catch(e){ __sascTag('sound','GUI sound helper failed: '+(e&&e.message||e)); }
+        }
+        if(typeof vm.addSound === 'function'){
+          try{
+            const id = md5FromMd5ext(md5ext);
+            const snd={ name:name||('Sound '+md5ext.slice(0,6)), assetId:id, md5ext, dataFormat:extOf(md5ext), rate:44100, sampleCount:0 };
+            await vm.addSound(md5ext, snd, t.id);
+            __sascTag('sound','added via vm.addSound');
+            emitUi(vm);
+            return;
+          }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
         }
       }
 
-      if (skinId != null) target.sprite.costumes[idx].skinId = skinId;
-      try{ target.setCostume(idx); }catch(_){}
-      emitUiUpdates(vm);
+      // fallback: open Sound Library so user can pick (works everywhere)
+      __sascTag('sound','sound upload not supported in this build (use Sound Library or Sounds tab)');
+      try{ openSoundLibrary(); }catch(_){}
+      throw new Error('No sound upload path available in this build');
     }
 
-    /* ---------------- Library openers ---------------- */
+    /* ---------- file-input helpers for “from file” (C options) ---------- */
+    function selectLocalImageFile(){
+      return new Promise((resolve,reject)=>{
+        const el = document.getElementById('file-image');
+        el.value = ''; // clear previous
+        el.onchange = async () => {
+          if(!el.files || !el.files[0]) return reject(new Error('no file'));
+          const f = el.files[0];
+          const ext = (f.name.split('.').pop()||'').toLowerCase();
+          const buf = await f.arrayBuffer();
+          const blob = new Blob([buf], {type:mimeFromExt(ext)});
+          const text = (ext==='svg') ? await (new Response(blob)).text() : null;
+          resolve({buf, blob, text, ext, isSVG:(ext==='svg'), md5ext: (crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,32) : (Date.now().toString(16).padEnd(32,'0'))) + '.' + ext});
+        };
+        el.click();
+      });
+    }
+    function selectLocalSoundFile(){
+      return new Promise((resolve,reject)=>{
+        const el = document.getElementById('file-sound');
+        el.value = '';
+        el.onchange = async () => {
+          if(!el.files || !el.files[0]) return reject(new Error('no file'));
+          const f = el.files[0];
+          const ext = (f.name.split('.').pop()||'').toLowerCase();
+          const buf = await f.arrayBuffer();
+          const blob = new Blob([buf], {type:mimeFromExt(ext)});
+          resolve({buf, blob, text:null, ext, isSVG:false, md5ext: (crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,32) : (Date.now().toString(16).padEnd(32,'0'))) + '.' + ext});
+        };
+        el.click();
+      });
+    }
+  </script>
+  <!-- UI wiring: open libraries, diagnostics (Apple A/B/C), Backdrop A/B/C, Sound A/B/C -->
+  <script>
+    /* ---------- find & click built-in GUI buttons (like on scratch.mit.edu) ---------- */
     function clickByAriaContains(text) {
       const all = document.querySelectorAll('[aria-label]');
       for (const el of all) {
@@ -373,6 +576,7 @@
       }
       return false;
     }
+
     function openSpriteLibrary() {
       if (clickByAriaContains('choose a sprite')) { __sascTag('ui','opened Sprite Library via aria-label'); return; }
       if (clickByTitleContains('sprite')) { __sascTag('ui','opened Sprite Library via title'); return; }
@@ -398,166 +602,135 @@
       __sascTag('ui','Sound Library button not found in this layout');
     }
 
-    /* ---------------- Generic “md5” / “file” importers ---------------- */
+    /* ---------- diagnostics & explicit A/B/C paths ---------- */
+    const APPLE_MD5 = '3826a4091a33e4d26f87a2fac7cf796b.svg';
+    const SKY_MD5   = 'e7c147730f19d284bcd7b3f00af19bb6.svg';
+    const POP_MD5   = '83c36d806dc92327b9e7049a565c6bff.wav';
 
-    async function ensureSpriteWithCostumeFromAsset(name, asset, md5ext){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const before=getSprites(vm).length;
-      // try native addSprite first
-      if (typeof vm.addSprite === 'function') {
-        try{
-          const model = {
-            isStage:false, name,
-            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
-            currentCostume:0,
-            costumes:[costumeFromMd5(name, md5ext)],
-            sounds:[], volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
-            draggable:false, rotationStyle:"all around"
-          };
-          await vm.addSprite(JSON.stringify(model));
-          const tgt = await waitForNewSprite(vm, before, name, 1500);
-          if (tgt) { await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name}); return tgt; }
-        }catch(e){ __sascTag('sprite','addSprite failed: '+(e&&e.message||e)); }
-      }
-      // fallback: duplicate first sprite
-      const sprites=getSprites(vm);
-      if (sprites.length && typeof vm.duplicateSprite==='function'){
-        const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(()=>false);
-        if (ok) {
-          const tgt = await waitForNewSprite(vm, before, null, 1500);
-          if (tgt){ try{ await vm.renameSprite(tgt.id, name); }catch(_){}; await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name}); return tgt; }
+    // Explicit Apple A (vm.addSprite only), B (duplicate), C (local file)
+    async function addAppleA(){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('appleA','vm missing');
+      const asset = await fetchAsset(APPLE_MD5);
+      if(typeof vm.addSprite !== 'function'){ __sascTag('appleA','vm.addSprite unavailable'); return; }
+      try{
+        await storeImageAsset(vm, asset);
+        const spriteObj = {
+          isStage:false, name:'Apple (A)', variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+          currentCostume:0, costumes:[costumeModel('Apple', APPLE_MD5)], sounds:[],
+          volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90, draggable:false, rotationStyle:"all around"
+        };
+        const id = await vm.addSprite(JSON.stringify(spriteObj));
+        const tgt=(vm.runtime.targets||[]).find(t=>t.id===id);
+        if(tgt){ await applySkin(vm,tgt,asset); __sascTag('appleA','sprite created via vm.addSprite'); emitUi(vm); }
+        else __sascTag('appleA','created but target not found');
+      }catch(e){ __sascTag('appleA','failed: '+(e&&e.message||e)); }
+    }
+    async function addAppleB(){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('appleB','vm missing');
+      const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
+      if(!sprites.length || typeof vm.duplicateSprite!=='function'){ __sascTag('appleB','duplicate path unavailable'); return; }
+      try{
+        const asset = await fetchAsset(APPLE_MD5);
+        const newId = await vm.duplicateSprite(sprites[0].id);
+        const tgt=(vm.runtime.targets||[]).find(t=>t.id===newId);
+        if(!tgt) throw new Error('duplicate ok but target not found');
+        try{ await vm.renameSprite(newId,'Apple (B)'); }catch(_){ if(tgt.sprite) tgt.sprite.name='Apple (B)'; }
+        await addCostumeToTarget(vm, tgt, 'Apple', APPLE_MD5, asset); // push + skin
+        __sascTag('appleB','sprite created via duplicate+swap');
+      }catch(e){ __sascTag('appleB','failed: '+(e&&e.message||e)); }
+    }
+    async function addAppleC(){
+      const vm = window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('appleC','vm missing');
+      try{
+        const asset = await selectLocalImageFile();
+        const id = await storeImageAsset(vm, asset);
+        const spriteObj = {
+          isStage:false, name:'Apple (C: file)', variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+          currentCostume:0, costumes:[costumeModel('Local', asset.md5ext)], sounds:[],
+          volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90, draggable:false, rotationStyle:"all around"
+        };
+        if(typeof vm.addSprite === 'function'){
+          const newId = await vm.addSprite(JSON.stringify(spriteObj));
+          const tgt=(vm.runtime.targets||[]).find(t=>t.id===newId);
+          if(tgt){ await applySkin(vm,tgt,asset); __sascTag('appleC','sprite created from local file via vm.addSprite'); emitUi(vm); return; }
         }
-      }
-      throw new Error('No sprite creation path available');
+        __sascTag('appleC','vm.addSprite unavailable; try Apple B or open Sprite Library');
+      }catch(e){ __sascTag('appleC','file path failed: '+(e&&e.message||e)); }
     }
 
-    async function spriteFromMd5Prompt(){
-      const md5ext = prompt('Sprite costume md5.ext (svg/png):', APPLE_MD5EXT);
-      if(!md5ext) return;
-      const asset = await fetchAsset(md5ext.trim());
-      const name = 'Sprite '+md5ext.slice(0,6);
-      await ensureSpriteWithCostumeFromAsset(name, asset, md5ext.trim());
-      __sascTag('sprite','added via md5 '+md5ext);
+    // Backdrop A (GUI), B (vm.addBackdrop), C (manual)
+    async function addBackdropA(){
+      const GUI=window.GUI;
+      const vm=window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('backdrop','vm missing');
+      try{
+        const asset = await fetchAsset(SKY_MD5);
+        if(GUI?.handleBackdropUpload){
+          await GUI.handleBackdropUpload(asset.blob, asset.isSVG?'image/svg+xml':'image/png');
+          __sascTag('backdrop','added via GUI.handleBackdropUpload');
+        }else{
+          __sascTag('backdrop','GUI helper not available; try B or C');
+        }
+      }catch(e){ __sascTag('backdrop','A failed: '+(e&&e.message||e)); }
+    }
+    async function addBackdropB(){
+      const vm=window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('backdrop','vm missing');
+      try{
+        const asset = await fetchAsset(SKY_MD5);
+        if(typeof vm.addBackdrop === 'function'){
+          await storeImageAsset(vm, asset);
+          await vm.addBackdrop(SKY_MD5, costumeModel('Sky', SKY_MD5));
+          __sascTag('backdrop','added via vm.addBackdrop');
+          emitUi(vm);
+        }else{
+          __sascTag('backdrop','vm.addBackdrop unavailable; try A or C');
+        }
+      }catch(e){ __sascTag('backdrop','B failed: '+(e&&e.message||e)); }
+    }
+    async function addBackdropC(){
+      const vm=window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('backdrop','vm missing');
+      const stage = vm.runtime.getTargetForStage?.();
+      if(!stage) return __sascTag('backdrop','stage missing');
+      try{
+        const asset = await selectLocalImageFile();
+        await addCostumeToTarget(vm, stage, 'Local Backdrop', asset.md5ext, asset);
+        __sascTag('backdrop','added via manual stage injection (file)');
+      }catch(e){ __sascTag('backdrop','C failed: '+(e&&e.message||e)); }
     }
 
-    async function spriteFromFile(){
-      const inp=document.getElementById('file-image');
-      inp.onchange=async()=>{
-        const file=inp.files&&inp.files[0]; if(!file) return;
-        const asset=await readLocalFile(file);
-        const fakeMd5 = (crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
-        const name='Sprite '+(file.name||asset.ext);
-        await ensureSpriteWithCostumeFromAsset(name, asset, fakeMd5);
-        __sascTag('sprite','added from local file: '+(file.name||'file'));
-        inp.value='';
-      };
-      inp.click();
+    // Sound A (open Library), B (md5 via GUI/vm), C (local file via GUI)
+    async function addSoundA(){
+      openSoundLibrary();
     }
-
-    async function backdropFromMd5Prompt(){
-      const md5ext = prompt('Backdrop md5.ext (svg/png):', SKY_MD5EXT);
-      if(!md5ext) return;
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const stage = vm.runtime.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
-      const asset=await fetchAsset(md5ext.trim());
-      await applyCostumeToTarget(vm, stage, md5ext.trim(), asset, {replaceAll:false, name:'Backdrop '+md5ext.slice(0,6)});
-      __sascTag('backdrop','added via md5 '+md5ext);
+    async function addSoundB(){
+      try{
+        await addSoundToSelected('Pop', POP_MD5);
+      }catch(e){ __sascTag('sound','B failed: '+(e&&e.message||e)); }
     }
-
-    async function backdropFromFile(){
-      const inp=document.getElementById('file-image');
-      inp.onchange=async()=>{
-        const file=inp.files&&inp.files[0]; if(!file) return;
-        const asset=await readLocalFile(file);
-        const fakeMd5=(crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
-        const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-        const stage = vm.runtime.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
-        await applyCostumeToTarget(vm, stage, fakeMd5, asset, {replaceAll:false, name:'Backdrop '+(file.name||asset.ext)});
-        __sascTag('backdrop','added from local file: '+(file.name||'file'));
-        inp.value='';
-      };
-      inp.click();
-    }
-
-    async function soundFromMd5Prompt(){
-      const md5ext=prompt('Sound md5.ext (wav/mp3):', MEOW_MD5EXT);
-      if(!md5ext) return;
-      const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-      if(!vm?.runtime) throw new Error('vm missing');
-      const t=vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-      if(!t) throw new Error('No editing target');
-      const asset=await fetchAsset(md5ext.trim());
-      if(GUI?.handleSoundUpload){
-        try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','added via GUI.handleSoundUpload (md5)'); return; }
-        catch(e){ __sascTag('sound','GUI sound helper failed: '+(e&&e.message||e)); }
-      }
-      if(typeof vm.addSound==='function'){
-        try{
-          const id=md5ext.slice(0,32), ext=md5ext.split('.').pop().toLowerCase();
-          const snd={name:'Sound '+md5ext.slice(0,6), assetId:id, md5ext, dataFormat:ext, format:'', rate:44100, sampleCount:0};
-          await vm.addSound(md5ext, snd, t.id);
-          __sascTag('sound','added via vm.addSound (md5)');
+    async function addSoundC(){
+      const vm=window.vm || await (window.bindVM? window.bindVM(6000):null);
+      if(!vm?.runtime) return __sascTag('sound','vm missing');
+      const t = getEditingTarget(vm);
+      if(!t) return __sascTag('sound','No editing target');
+      const GUI=window.GUI;
+      try{
+        const asset = await selectLocalSoundFile();
+        if(GUI?.handleSoundUpload){
+          await GUI.handleSoundUpload(asset.blob, t.id);
+          __sascTag('sound','added local file via GUI.handleSoundUpload');
           return;
-        }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
-      }
-      __sascTag('sound','sound upload not supported in this build (use Sound Library or Sounds tab)');
+        }
+        __sascTag('sound','GUI sound upload not available; use Sound Library');
+        openSoundLibrary();
+      }catch(e){ __sascTag('sound','C failed: '+(e&&e.message||e)); }
     }
 
-    async function soundFromFile(){
-      const inp=document.getElementById('file-sound');
-      inp.onchange=async()=>{
-        const file=inp.files&&inp.files[0]; if(!file) return;
-        const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-        if(!vm?.runtime) throw new Error('vm missing');
-        const t=vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-        if(!t) throw new Error('No editing target');
-        try{
-          if(GUI?.handleSoundUpload){ await GUI.handleSoundUpload(file, t.id); __sascTag('sound','added from local file via GUI'); }
-          else if(typeof vm.addSound==='function'){
-            const asset=await readLocalFile(file);
-            const fakeMd5=(crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
-            const id=fakeMd5.slice(0,32);
-            const snd={name:file.name||('Sound '+asset.ext), assetId:id, md5ext:fakeMd5, dataFormat:asset.ext, format:'', rate:44100, sampleCount:0};
-            await vm.addSound(fakeMd5, snd, t.id);
-            __sascTag('sound','added from local file via vm.addSound');
-          }else{
-            __sascTag('sound','sound upload not supported in this build (use Sound Library)');
-          }
-        }catch(e){ __sascTag('sound','local file add failed: '+(e&&e.message||e)); }
-        inp.value='';
-      };
-      inp.click();
-    }
-
-    /* ---------------- Apples (diagnostics) ---------------- */
-    async function addApple_A(){
-      const asset=await fetchAsset(APPLE_MD5EXT);
-      await ensureSpriteWithCostumeFromAsset('Apple (A)', asset, APPLE_MD5EXT);
-      __sascTag('appleA','ok');
-    }
-    async function addApple_B(){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const sprites=getSprites(vm);
-      if(!sprites.length || typeof vm.duplicateSprite!=='function'){ __sascTag('appleB','duplicate path not available'); return; }
-      const before=sprites.length;
-      const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(e=>{__sascTag('appleB','duplicate failed: '+(e&&e.message||e)); return false;});
-      if(!ok) return;
-      const tgt = await waitForNewSprite(vm, before, null, 2000);
-      if(!tgt){ __sascTag('appleB','no new sprite after duplicate'); return; }
-      await new Promise(r=>requestAnimationFrame(r));
-      const name='Apple (B)';
-      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
-      const asset=await fetchAsset(APPLE_MD5EXT);
-      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
-      __sascTag('appleB','sprite created via duplicate+swap');
-    }
-    async function addApple_C(){
-      const asset=await fetchAsset(APPLE_MD5EXT);
-      await ensureSpriteWithCostumeFromAsset('Apple (C)', asset, APPLE_MD5EXT);
-      __sascTag('appleC','ok');
-    }
-
-    /* ---------------- Buttons ---------------- */
+    /* ---------- wire buttons ---------- */
     document.getElementById('btn-targets').onclick=()=>{
       const vm=window.vm; if(!vm||!vm.runtime) return __sascTag('targets','VM not ready');
       const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
@@ -565,25 +738,52 @@
     };
 
     // Library openers
-    document.getElementById('btn-lib-sprite').onclick = openSpriteLibrary;
-    document.getElementById('btn-lib-backdrop').onclick = openBackdropLibrary;
-    document.getElementById('btn-lib-costume').onclick = openCostumeLibrary;
-    document.getElementById('btn-lib-sound').onclick = openSoundLibrary;
+    document.getElementById('btn-lib-sprite').onclick=openSpriteLibrary;
+    document.getElementById('btn-lib-backdrop').onclick=openBackdropLibrary;
+    document.getElementById('btn-lib-costume').onclick=openCostumeLibrary;
+    document.getElementById('btn-lib-sound').onclick=openSoundLibrary;
 
-    // Generic md5/file importers (these are the main reliable tools)
-    document.getElementById('btn-sprite-b').onclick = ()=>spriteFromMd5Prompt().catch(e=>__sascTag('sprite','md5 failed: '+(e&&e.message||e)));
-    document.getElementById('btn-sprite-c').onclick = ()=>spriteFromFile();
-    document.getElementById('btn-bg-b').onclick     = ()=>backdropFromMd5Prompt().catch(e=>__sascTag('backdrop','md5 failed: '+(e&&e.message||e)));
-    document.getElementById('btn-bg-c').onclick     = ()=>backdropFromFile();
-    document.getElementById('btn-snd-b').onclick    = ()=>soundFromMd5Prompt().catch(e=>__sascTag('sound','md5 failed: '+(e&&e.message||e)));
-    document.getElementById('btn-snd-c').onclick    = ()=>soundFromFile();
+    // Sprite by md5 / from file (generic)
+    document.getElementById('btn-sprite-b').onclick=async()=>{
+      try{
+        const md5ext=prompt('Sprite costume md5.ext (svg/png):', APPLE_MD5);
+        if(!md5ext) return;
+        await addSpriteFromMd5('Sprite (md5)', md5ext.trim());
+      }catch(e){ __sascTag('tools','sprite by md5 failed: '+(e&&e.message||e)); }
+    };
+    document.getElementById('btn-sprite-c').onclick=addAppleC; // reuse “file” logic
 
-    // Apple diagnostics
-    document.getElementById('btn-apple-a').onclick=()=>{ addApple_A().catch(e=>__sascTag('appleA','failed: '+(e&&e.message||e))); };
-    document.getElementById('btn-apple-b').onclick=()=>{ addApple_B().catch(e=>__sascTag('appleB','failed: '+(e&&e.message||e))); };
-    document.getElementById('btn-apple-c').onclick=()=>{ addApple_C().catch(e=>__sascTag('appleC','failed: '+(e&&e.message||e))); };
+    // Backdrop by md5 / from file (generic)
+    document.getElementById('btn-bg-b').onclick=async()=>{
+      try{
+        const md5ext=prompt('Backdrop md5.ext (svg/png):', SKY_MD5);
+        if(!md5ext) return;
+        // favor B path explicitly
+        const vm=window.vm || await (window.bindVM? window.bindVM(6000):null);
+        if(!vm?.runtime) return __sascTag('backdrop','vm missing');
+        const asset = await fetchAsset(md5ext.trim());
+        if(typeof vm.addBackdrop === 'function'){
+          await storeImageAsset(vm, asset);
+          await vm.addBackdrop(md5ext.trim(), costumeModel('Backdrop', md5ext.trim()));
+          __sascTag('backdrop','added via vm.addBackdrop (prompt)');
+          emitUi(vm);
+        }else{
+          await addBackdropSmart('Backdrop', md5ext.trim()); // fallback to A/C internally
+        }
+      }catch(e){ __sascTag('tools','backdrop md5 failed: '+(e&&e.message||e)); }
+    };
+    document.getElementById('btn-bg-c').onclick=addBackdropC;
 
-    // auto-bind after mount
+    // Sound by md5 / from file
+    document.getElementById('btn-snd-b').onclick=addSoundB;
+    document.getElementById('btn-snd-c').onclick=addSoundC;
+
+    // Diagnostic Apples
+    document.getElementById('btn-apple-a').onclick=addAppleA;
+    document.getElementById('btn-apple-b').onclick=addAppleB;
+    document.getElementById('btn-apple-c').onclick=addAppleC;
+
+    // Auto-bind after mount
     (window.bindVM||(()=>Promise.resolve(null)))(20000);
   </script>
 </body>
