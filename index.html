@@ -265,34 +265,54 @@
       try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
       try{ vm.runtime.emit('targetsUpdate'); }catch(_){}
       try{ vm.emit && vm.emit('targetsUpdate'); }catch(_){}
+      try{ vm.runtime.requestRedraw && vm.runtime.requestRedraw(); }catch(_){}
     }
 
+    // Core fix: when we create a skin, also set costume.skinId and re-select it
     async function applyCostumeToTarget(vm, target, md5ext, asset, opts={}){
       const storage = vm.runtime?.storage; if(!storage) throw new Error('No VM storage');
       const id = md5ext.slice(0,32);
       const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
       storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
 
+      // Decide target index (append vs replace)
+      let idx = 0;
       const costume = costumeFromMd5(opts.name || null, md5ext);
       if (opts.replaceAll) {
         target.sprite.costumes = [costume];
-        target.setCostume(0);
+        idx = 0;
       } else {
         target.sprite.costumes.push(costume);
-        target.setCostume(target.sprite.costumes.length-1);
+        idx = target.sprite.costumes.length - 1;
       }
 
+      // Create a skin and attach it
+      let skinId = null;
       if (vm.renderer && target.drawableID != null) {
         if (asset.isSVG && vm.renderer.createSVGSkin) {
           const svgText = asset.text ?? await (new Response(asset.blob)).text();
-          const skinId = vm.renderer.createSVGSkin(svgText);
+          // some renderer builds accept (svg, cx, cy)
+          try{
+            skinId = vm.renderer.createSVGSkin(svgText, costume.rotationCenterX, costume.rotationCenterY);
+          }catch(_){
+            skinId = vm.renderer.createSVGSkin(svgText);
+          }
           vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
         } else if (!asset.isSVG && vm.renderer.createBitmapSkin) {
           const bmp = await createImageBitmap(asset.blob);
-          const skinId = vm.renderer.createBitmapSkin(bmp, 1);
+          skinId = vm.renderer.createBitmapSkin(bmp, 1);
           vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
         }
       }
+
+      // 🔧 key step: put skinId on the model so VM/GUI know how to render thumbnails
+      if (skinId != null) {
+        target.sprite.costumes[idx].skinId = skinId;
+      }
+
+      // Re-select this costume to force the VM to sync drawable ↔ model
+      try{ target.setCostume(idx); }catch(_){}
+
       emitUiUpdates(vm);
     }
 
@@ -352,7 +372,7 @@
       __sascTag('appleA','sprite created via addSprite(+apply)');
     }
 
-    // (B) duplicate first sprite → swap skin
+    // (B) duplicate first sprite → swap skin (this worked for you; now with fixed thumbnails/stage)
     async function addApple_B(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
@@ -377,7 +397,7 @@
       __sascTag('appleB','sprite created via duplicate+swap');
     }
 
-    // (C) tolerant path: try addSprite; if nothing appears, fall back to adding Apple costume to the selected sprite
+    // (C) tolerant path
     async function addApple_C(){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
@@ -482,7 +502,6 @@
       addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
     };
     document.getElementById('btn-sound').onclick=()=>{
-      // Using Scratch's built-in "Meow" asset id; on GitHub Pages, local-first may log a 404 before CDN succeeds — that's OK.
       const md5ext=prompt('Sound md5.ext (wav/mp3):','83c36d806dc92327b9e7049a565c6bff.wav'); if(!md5ext) return;
       addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
     };
