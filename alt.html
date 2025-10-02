@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>SASC Scratch Editor — alt (fiber-scan+observer)</title>
   <link rel="icon" href="./favicon.ico"/>
+</head>
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
+
+    /* SASC console */
     #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     #sasc-console[data-theme="light"]{background:#fff9;color:#034;border-color:#89a}
@@ -17,6 +20,8 @@
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px)}
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
+
+    /* Minimal layout shim so GUI renders */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
     [class*="stage-header"]{position:relative;z-index:2}
@@ -30,6 +35,7 @@
 <body>
   <div id="app"></div>
 
+  <!-- SASC console -->
   <div id="sasc-console">
     <header>
       <strong>SASC</strong>
@@ -48,6 +54,7 @@
 </pre>
   </div>
 
+  <!-- Console wiring -->
   <script>
     (function(){
       const pre=document.querySelector('#sasc-console pre');
@@ -74,7 +81,7 @@
     })();
   </script>
 
-  <!-- Local-first hooks -->
+  <!-- Local-first hooks for internalapi assets -->
   <script>
     (function(){
       const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
@@ -100,37 +107,229 @@
     })();
   </script>
 
-  <!-- GUI bundle -->
-  <script src="scratch-gui.js?v=finder-003"></script>
+  <!-- Your GUI bundle (don’t change the query tag) -->
+  <script src="scratch-gui.js?v=finder-002"></script>
 
-  <!-- Mount GUI -->
+  <!-- Mount the GUI -->
   <script>
-    (function(){
+    (function mount(){
       try{
         const app=document.getElementById('app');
         const GUI=window.GUI;
-        if(!GUI){ __sascTag('SASC','ERROR: window.GUI missing'); return; }
-        if(typeof GUI.setAppElement==='function') GUI.setAppElement(app);
-        if(typeof GUI.render==='function'){
+        if (!GUI) { __sascTag('SASC','ERROR: window.GUI missing'); return; }
+        if (typeof GUI.setAppElement === 'function') GUI.setAppElement(app);
+
+        if (typeof GUI.render === 'function'){
           GUI.render(app);
           __sascTag('SASC','GUI mounted via GUI.render(app)');
-        }else{
-          let Wrapped=GUI.default||GUI.GUI||GUI;
-          if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
-          if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
-          if(typeof GUI.HashParserHOC==='function') Wrapped=GUI.HashParserHOC(Wrapped);
-          const props={isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
-          const el=window.React.createElement(Wrapped,props);
-          window.ReactDOM.render(el,app);
+        } else {
+          let Wrapped = GUI.default || GUI.GUI || GUI;
+          if (typeof GUI.AppStateHOC === 'function') Wrapped = GUI.AppStateHOC(Wrapped);
+          if (typeof GUI.ProjectLoaderHOC === 'function') Wrapped = GUI.ProjectLoaderHOC(Wrapped);
+          if (typeof GUI.HashParserHOC === 'function') Wrapped = GUI.HashParserHOC(Wrapped);
+          const props = {isPlayerOnly:false,isFullScreen:false,canUseCloud:false,projectId:(location.hash&&/\d+/.test(location.hash))?undefined:'0'};
+          const el = window.React.createElement(Wrapped, props);
+          window.ReactDOM.render(el, app);
           __sascTag('SASC','GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId='+(props.projectId||'hash'));
         }
       }catch(e){ __sascTag('SASC','BOOT ERROR: '+(e&&e.message)); }
     })();
   </script>
 
-  <!-- Binder + tools -->
+  <!-- VM binder (fiber scan + store subscribe + observer) -->
   <script>
-    /* exact same binder+tools block as in index.html above */
+    (function(){
+      function fiberKeyOf(n){ if(!n) return null; for(const k in n){ if(k.startsWith('__reactFiber$')||k.startsWith('__reactInternalInstance$')) return k; } return null; }
+      function findAnyFiberNode(root){ if(!root) return null; const q=[root]; while(q.length){ const n=q.shift(); if(fiberKeyOf(n)) return n; if(n.shadowRoot) q.push(n.shadowRoot); if(n.childNodes) for(const c of n.childNodes) q.push(c); } return null; }
+      function getReactFiberFromDom(node){ const k=fiberKeyOf(node); return k?node[k]:null; }
+      function* walkFibers(root){ if(!root) return; const seen=new Set(), stack=[root]; while(stack.length){ const f=stack.pop(); if(!f||seen.has(f)) continue; seen.add(f); yield f; if(f.child) stack.push(f.child); if(f.sibling) stack.push(f.sibling); if(f.return&&!seen.has(f.return)) stack.push(f.return); } }
+      function tryExtractStoreFromFiber(f){ try{ const n=f.stateNode; if(n?.store?.getState) return n.store; if(n?.props?.store?.getState) return n.props.store; }catch(_){ } return null; }
+      function vmFromStore(store){ try{ const st=store.getState?.(); if(st?.vm?.runtime) return st.vm; if(st?.scratchGui?.vm?.runtime) return st.scratchGui.vm; if(st?.scratch?.vm?.runtime) return st.scratch.vm; }catch(_){ } return null; }
+
+      let bound=false; let observer=null;
+
+      async function bindVM(timeoutMs=15000){
+        const t0=Date.now(), app=document.getElementById('app');
+        function tryOnce(){
+          const GUI=window.GUI||{}; const direct=window.vm||GUI.vm;
+          if(direct?.runtime){ window.vm=direct; __sascTag('VM','ready (direct)'); return direct; }
+          const host=findAnyFiberNode(app); if(!host) return null;
+          const root=getReactFiberFromDom(host); if(!root) return null;
+          for(const f of walkFibers(root)){
+            const store=tryExtractStoreFromFiber(f);
+            if(store){
+              try{ const unsub=store.subscribe(()=>{ const v=vmFromStore(store); if(v?.runtime && !bound){ window.vm=v; bound=true; __sascTag('VM','ready (store subscribe)'); try{unsub();}catch(_){}}}); }catch(_){}
+              const vNow=vmFromStore(store); if(vNow?.runtime){ window.vm=vNow; __sascTag('VM','ready (store immediate)'); return vNow; }
+            }
+            try{
+              const props=f.memoizedProps||f.pendingProps||(f.stateNode&&f.stateNode.props);
+              const state=f.memoizedState||(f.stateNode&&f.stateNode.state);
+              for(const c of [props,state,f.stateNode,f]){
+                if(!c || typeof c!=='object') continue;
+                for(const k in c){ const v=c[k]; if(v && typeof v==='object' && v.runtime && v.runtime.targets){ window.vm=v; __sascTag('VM','ready (fiber props/state)'); return v; } }
+              }
+            }catch(_){}
+          }
+          return null;
+        }
+        if(!observer){
+          observer=new MutationObserver(()=>{ if(bound) return; const v=tryOnce(); if(v){ bound=true; } });
+          observer.observe(app,{childList:true,subtree:true});
+        }
+        while(Date.now()-t0<timeoutMs && !bound){
+          const v=tryOnce(); if(v){ bound=true; return v; }
+          await new Promise(r=>setTimeout(r,250));
+          __sascLog('still waiting for VM…');
+        }
+        if(!bound) __sascLog('rebind: VM not found after fiber scan');
+        return bound?window.vm:null;
+      }
+
+      // expose for other scripts
+      window.bindVM = bindVM;
+      document.getElementById('btn-bind').onclick=()=>bindVM(10000);
+    })();
+  </script>
+
+  <!-- ✅ Helpers/actions (storage + renderer skin) -->
+  <script>
+    async function fetchAsset(md5ext){
+      const ext = md5ext.split('.').pop().toLowerCase();
+      const isSVG = ext === 'svg';
+      const base = location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'');
+      const local = base + '/static/assets/' + md5ext;
+      async function read(res){
+        const buf = await res.arrayBuffer();
+        const blob = new Blob([buf], {type: isSVG ? 'image/svg+xml' :
+                                             ext==='png' ? 'image/png' :
+                                             (ext==='jpg'||ext==='jpeg') ? 'image/jpeg' :
+                                             ext==='gif' ? 'image/gif' :
+                                             ext==='wav' ? 'audio/wav' :
+                                             ext==='mp3' ? 'audio/mp3' :
+                                             'application/octet-stream'});
+        const text = isSVG ? await (new Response(blob)).text() : null;
+        return {buf, blob, text, ext, isSVG};
+      }
+      try { const rLocal = await fetch(local, {cache:'no-store'}); if (rLocal.ok) return read(rLocal); } catch (_) {}
+      const cdn = 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/';
+      const rCdn = await fetch(cdn, {cache:'no-store'}); if (!rCdn.ok) throw new Error('CDN '+rCdn.status);
+      return read(rCdn);
+    }
+    function costumeFromMd5(name, md5ext){
+      const isSVG = /\.svg$/i.test(md5ext);
+      const assetId = md5ext.slice(0,32);
+      return { name: name || ('Costume '+md5ext.slice(0,6)), assetId, md5ext, dataFormat: isSVG ? 'svg' : 'png', rotationCenterX: 240, rotationCenterY: 180 };
+    }
+    async function applyCostumeToTarget(vm, target, md5ext, asset){
+      const storage = vm.runtime?.storage; if (!storage) throw new Error('No VM storage');
+      const id = md5ext.slice(0,32);
+      const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
+      storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
+      const costume = costumeFromMd5(null, md5ext);
+      target.sprite.costumes = [costume];
+      target.setCostume(0);
+      if (vm.renderer && target.drawableID != null) {
+        if (asset.isSVG && vm.renderer.createSVGSkin) {
+          const svgText = asset.text ?? await (new Response(asset.blob)).text();
+          const skinId = vm.renderer.createSVGSkin(svgText);
+          vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+        } else if (!asset.isSVG && vm.renderer.createBitmapSkin) {
+          const bmp = await createImageBitmap(asset.blob);
+          const skinId = vm.renderer.createBitmapSkin(bmp, 1);
+          vm.renderer.updateDrawableProperties(target.drawableID, {skinId});
+        }
+      }
+      try { vm.runtime.emit('PROJECT_CHANGED'); } catch(_) {}
+    }
+    async function addSpriteFromCostume(name, md5ext){
+      const vm = window.vm || await bindVM(6000);
+      if (!vm?.runtime) throw new Error('vm missing');
+      const sprites = (vm.runtime.targets||[]).filter(t=>!t.isStage);
+      if (!sprites.length) throw new Error('No base sprite to duplicate (Sprite1 missing?)');
+      const baseId = sprites[0].id;
+      const newId = await vm.duplicateSprite(baseId).catch(()=>null);
+      if (!newId) throw new Error('duplicateSprite failed');
+      const tgt = (vm.runtime.targets||[]).find(t=>t.id===newId);
+      if (!tgt) throw new Error('New sprite target not found');
+      try { await vm.renameSprite(newId, name||'New Sprite'); } catch(_) { if (tgt.sprite) tgt.sprite.name = name||'New Sprite'; }
+      const asset = await fetchAsset(md5ext);
+      await applyCostumeToTarget(vm, tgt, md5ext, asset);
+      __sascTag('tools','sprite created: '+(name||md5ext));
+    }
+    async function addBackdropSmart(name, md5ext){
+      const vm = window.vm || await bindVM(6000), GUI = window.GUI;
+      if (!vm?.runtime) throw new Error('vm missing');
+      const asset = await fetchAsset(md5ext);
+      const isSVG = asset.isSVG;
+      if (GUI?.handleBackdropUpload) {
+        try { await GUI.handleBackdropUpload(asset.blob, isSVG?'image/svg+xml':'image/png'); __sascTag('backdrop','success via GUI.handleBackdropUpload'); return; }
+        catch(e){ __sascTag('backdrop','GUI helper failed: '+(e&&e.message||e)); }
+      }
+      if (typeof vm.addBackdrop === 'function') {
+        try { await vm.addBackdrop(md5ext, costumeFromMd5(name, md5ext)); __sascTag('backdrop','success via vm.addBackdrop'); return; }
+        catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
+      }
+      const stage = vm.runtime.getTargetForStage?.(); if (!stage) throw new Error('No stage target');
+      await applyCostumeToTarget(vm, stage, md5ext, asset);
+      __sascTag('backdrop','success via manual stage injection');
+    }
+    async function addCostumeToSelected(name, md5ext){
+      const vm = window.vm || await bindVM(6000), GUI = window.GUI;
+      if (!vm?.runtime) throw new Error('vm missing');
+      const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
+      if (!t) throw new Error('No editing target');
+      const asset = await fetchAsset(md5ext);
+      const isSVG = asset.isSVG;
+      if (GUI?.handleCostumeUpload) {
+        try { await GUI.handleCostumeUpload(asset.blob, isSVG?'image/svg+xml':'image/png', t.id); __sascTag('costume','success via GUI.handleCostumeUpload'); return; }
+        catch(e){ __sascTag('costume','GUI helper failed: '+(e&&e.message||e)); }
+      }
+      await applyCostumeToTarget(vm, t, md5ext, asset);
+      __sascTag('costume','success via manual injection');
+    }
+    async function addSoundToSelected(name, md5ext){
+      const vm=window.vm || await bindVM(6000), GUI=window.GUI;
+      if(!vm?.runtime) throw new Error('vm missing');
+      const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
+      if(!t) throw new Error('No editing target');
+      const asset=await fetchAsset(md5ext);
+      if(GUI?.handleSoundUpload){
+        try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
+        catch(e){ __sascTag('sound','GUI helper failed: '+(e&&e.message||e)); }
+      }
+      if(typeof vm.addSound==='function'){
+        try{
+          const id = md5ext.slice(0,32);
+          const ext = md5ext.split('.').pop().toLowerCase();
+          const snd={ name:name||('Sound '+md5ext.slice(0,6)), assetId:id, md5ext, dataFormat:ext, format:'', rate:44100, sampleCount:0 };
+          await vm.addSound(md5ext, snd, t.id); __sascTag('sound','success via vm.addSound'); return;
+        }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
+      }
+      throw new Error('No sound upload path available in this build');
+    }
+
+    // Buttons
+    document.getElementById('btn-targets').onclick=()=>{
+      const vm=window.vm; if(!vm||!vm.runtime) return __sascTag('targets','VM not ready');
+      const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
+      ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite?.name||'(?)')));
+    };
+    document.getElementById('btn-apple').onclick=()=>addSpriteFromCostume('Apple','3826a4091a33e4d26f87a2fac7cf796b.svg').catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
+    document.getElementById('btn-backdrop').onclick=()=>{
+      const md5ext=prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg'); if(!md5ext) return;
+      addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
+    };
+    document.getElementById('btn-costume').onclick=()=>{
+      const md5ext=prompt('Costume md5.ext (svg/png):','3826a4091a33e4d26f87a2fac7cf796b.svg'); if(!md5ext) return;
+      addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
+    };
+    document.getElementById('btn-sound').onclick=()=>{
+      const md5ext=prompt('Sound md5.ext (wav/mp3):','0b1e3033140d094563248e61de4039e5.wav'); if(!md5ext) return;
+      addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
+    };
+
+    // Auto-bind after mount
+    (window.bindVM||(()=>Promise.resolve(null)))(20000);
   </script>
 </body>
 </html>
