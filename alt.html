@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (vm-binder-deep)</title>
+  <title>SASC Scratch Editor — index (fiber-binder)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -11,15 +11,15 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
     /* SASC console */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:400px;max-height:55vh;background:#111a;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:56vh;background:#111a;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(55vh - 46px)}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(56vh - 46px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
     #sasc-console button:hover{background:#033}
 
-    /* Minimal layout shim */
+    /* Minimal layout shim (keeps UI usable even if demo CSS fails) */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
     [class*="target-pane"]{min-width:240px;flex:0 0 240px}
@@ -34,10 +34,9 @@
   <!-- SASC console bootstrap -->
   <script>
     (function(){
-      const preHTML = 'SASC clear\n';
-      const c = document.createElement('div');
-      c.id = 'sasc-console';
-      c.innerHTML = `
+      const node = document.createElement('div');
+      node.id = 'sasc-console';
+      node.innerHTML = `
         <header>
           <strong>SASC</strong>
           <button id="btn-clear">Clear</button>
@@ -46,8 +45,8 @@
           <button id="btn-apple">+ Apple (sprite)</button>
           <button id="btn-backdrop-sky">+ Blue Sky → Backdrop</button>
         </header>
-        <pre>${preHTML}</pre>`;
-      document.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(c));
+        <pre>SASC clear\n</pre>`;
+      document.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(node));
       window.__sascLog = (m)=>{
         try{
           const pre = document.querySelector('#sasc-console pre');
@@ -56,12 +55,12 @@
         }catch(_){}
         console.log(m);
       };
-      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
-      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
       document.addEventListener('DOMContentLoaded', ()=>{
         const pre = document.querySelector('#sasc-console pre');
         document.getElementById('btn-clear').onclick = ()=>{ pre.textContent = 'SASC clear\n'; };
       });
+      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
+      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
     })();
   </script>
 </head>
@@ -73,7 +72,7 @@
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
 
-  <!-- Local-first hooks -->
+  <!-- Local-first fetch/XHR hooks -->
   <script>
   (function(){
     const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
@@ -122,148 +121,106 @@
   })();
   </script>
 
-  <!-- 🔧 Deep VM binder: capture Redux store + scan state -->
+  <!-- 🔍 React Fiber binder (no dependency on window.Redux) -->
   <script>
   (function(){
-    // throttle helper
-    const now = ()=> (performance && performance.now ? performance.now() : Date.now());
-    const throttle = (fn, ms)=>{
-      let t=0, pend=false;
-      return function(){ const n=now(); if (n-t >= ms){ t=n; fn(); } else if (!pend){ pend=true; setTimeout(()=>{pend=false; t=now(); fn();}, ms-(n-t)); } };
-    };
-
+    const log = (m)=> (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
     let vmRef = null;
-    let storeRef = null;
-    let lastScan = 0;
 
     function attachVM(vm, via){
       if (!vm || !vm.runtime) return false;
       vmRef = vm; window.vm = vmRef;
       const n = (vm.runtime.targets && vm.runtime.targets.length) || 0;
-      __sascLog('[binder] VM attached via '+via+' (targets='+n+')');
+      log(`[fiber] VM attached via ${via} (targets=${n})`);
       return true;
     }
 
-    // Passive polling of common locations
-    function discoverCommon(){
-      if (window.vm && window.vm.runtime) return attachVM(window.vm, 'window.vm');
-      const GUI = window.GUI;
-      if (GUI){
-        if (GUI.vm && GUI.vm.runtime && attachVM(GUI.vm, 'GUI.vm')) return true;
-        if (GUI.store && GUI.store.getState){
-          try{
-            const st = GUI.store.getState();
-            const vm = st && st.scratchGui && st.scratchGui.vm;
-            if (vm && vm.runtime && attachVM(vm, 'GUI.store.scratchGui.vm')) return true;
-          }catch(_){}
-        }
-      }
-      const SG = window.ScratchGUI;
-      if (SG){
-        if (SG.vm && SG.vm.runtime && attachVM(SG.vm, 'ScratchGUI.vm')) return true;
-        if (SG.store && SG.store.getState){
-          try{
-            const st = SG.store.getState();
-            const vm = st && st.scratchGui && st.scratchGui.vm;
-            if (vm && vm.runtime && attachVM(vm, 'ScratchGUI.store.scratchGui.vm')) return true;
-          }catch(_){}
-        }
-      }
-      return false;
-    }
-
-    // DFS scan to find an object that looks like VM
     function looksLikeVM(x){
       return x && typeof x==='object'
         && x.runtime && typeof x.runtime==='object'
         && Array.isArray(x.runtime.targets)
         && typeof x.addSprite==='function';
     }
-    function scanForVM(root, maxNodes=20000){
+
+    function scanStateForVM(state){
+      // try common path first
       try{
-        const seen = new Set();
-        const stack = [root];
-        let count = 0;
-        while (stack.length && count<maxNodes){
-          const cur = stack.pop(); count++;
-          if (!cur || typeof cur!=='object') continue;
-          if (seen.has(cur)) continue;
-          seen.add(cur);
-
-          if (looksLikeVM(cur)) return cur;
-
-          for (const k in cur){
-            const v = cur[k];
-            if (v && typeof v==='object' && !seen.has(v)) stack.push(v);
-          }
-        }
-      }catch(e){ /* ignore */ }
+        const vm = state && state.scratchGui && state.scratchGui.vm;
+        if (looksLikeVM(vm)) return vm;
+      }catch(_){}
+      // generic DFS
+      const seen = new Set();
+      const stack = [state];
+      let count = 0, max = 30000;
+      while (stack.length && count < max){
+        const cur = stack.pop(); count++;
+        if (!cur || typeof cur!=='object') continue;
+        if (seen.has(cur)) continue; seen.add(cur);
+        if (looksLikeVM(cur)) return cur;
+        for (const k in cur){ const v = cur[k]; if (v && typeof v==='object' && !seen.has(v)) stack.push(v); }
+      }
       return null;
     }
 
-    // Hook Redux.createStore to capture the *actual* store created by scratch-gui
-    (function hookRedux(){
-      const R = window.Redux;
-      if (!R || typeof R.createStore!=='function'){ __sascLog('[binder] Redux not ready to hook'); return; }
-      const origCreateStore = R.createStore;
-      R.createStore = function(){
-        const store = origCreateStore.apply(this, arguments);
-        storeRef = store;
-        window.__SASC_STORE = store;
-        __sascLog('[binder] captured Redux store');
-        // Subscribe with throttled scanner
-        const scan = throttle(()=>{
-          if (vmRef && vmRef.runtime) return;
-          try{
-            const state = store.getState && store.getState();
-            const vm = scanForVM(state);
-            if (vm && attachVM(vm, 'redux-state-scan')) return;
-          }catch(e){/*ignore*/}
-        }, 200);
-        try{ store.subscribe(scan); scan(); }catch(_){}
-        return store;
-      };
-      __sascLog('[binder] Redux.createStore hooked');
-    })();
+    function tryReactFiberProbe(rootEl){
+      // find React fiber on #app or its first child container
+      const keys = Object.keys(rootEl);
+      const fiberKey = keys.find(k => k.startsWith('__reactFiber$')) || keys.find(k => k.startsWith('__reactContainer'));
+      const fiber = fiberKey ? rootEl[fiberKey] : null;
+      if (!fiber){ log('still waiting for VM…'); return false; }
 
-    // Periodic attempts:
-    setInterval(()=>{
-      if (vmRef && vmRef.runtime) return;
-      if (discoverCommon()) return;
-      if (storeRef && storeRef.getState){
-        const t = now();
-        if (t - lastScan > 500){
-          lastScan = t;
+      // walk fiber tree depth-first
+      const stack = [fiber];
+      const seen = new Set();
+      while (stack.length){
+        const node = stack.pop();
+        if (!node || seen.has(node)) continue;
+        seen.add(node);
+
+        const props = node.memoizedProps || node.pendingProps || null;
+        const stateNode = node.stateNode || null;
+
+        // 1) vm on props/stateNode
+        if (props && props.vm && looksLikeVM(props.vm)) return attachVM(props.vm, 'fiber:props.vm');
+        if (stateNode && stateNode.vm && looksLikeVM(stateNode.vm)) return attachVM(stateNode.vm, 'fiber:stateNode.vm');
+
+        // 2) Redux store in stateNode (Provider)
+        const store = stateNode && stateNode.store && typeof stateNode.store.getState==='function' ? stateNode.store : null;
+        if (store){
           try{
-            const state = storeRef.getState();
-            const vm = scanForVM(state);
-            if (vm) attachVM(vm, 'redux-state-scan/poll');
+            const st = store.getState();
+            const vm = scanStateForVM(st);
+            if (vm) return attachVM(vm, 'fiber:redux store');
           }catch(_){}
         }
-      }else{
-        __sascLog('still waiting for VM…');
-      }
-    }, 400);
 
-    // Expose controls for later scripts
+        // push children
+        if (node.child) stack.push(node.child);
+        if (node.sibling) stack.push(node.sibling);
+      }
+      log('still waiting for VM…');
+      return false;
+    }
+
+    // Expose force rebind
     window.__SASC_BINDER = {
       get vm(){ return vmRef; },
-      forceRebind: ()=>{
-        if (discoverCommon()) return true;
-        if (storeRef && storeRef.getState){
-          const vm = scanForVM(storeRef.getState());
-          if (vm && attachVM(vm,'redux-state-scan/manual')) return true;
-        }
-        __sascLog('rebind: VM not found in known paths'); return false;
-      }
+      forceRebind: ()=> tryReactFiberProbe(document.getElementById('app'))
     };
+
+    // Poll until fiber appears & vm found
+    const app = document.getElementById('app');
+    const timer = setInterval(()=>{
+      if (vmRef && vmRef.runtime) { clearInterval(timer); return; }
+      tryReactFiberProbe(app);
+    }, 400);
   })();
   </script>
 
   <!-- Your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-alt"></script>
 
-  <!-- Mount GUI (HashParser(ProjectLoader(AppState(GUI)))) -->
+  <!-- Mount GUI -->
   <script>
   (function bootGUI(){
     try{
@@ -289,7 +246,7 @@
   })();
   </script>
 
-  <!-- Tools (Apple sprite / Blue Sky backdrop) -->
+  <!-- Tools (Apple / Backdrop) -->
   <script>
   (function tools(){
     const APPLE_SVG = '3826a4091a33e4d26f87a2fac7cf796b.svg';
@@ -306,18 +263,17 @@
     function costumeObj(name, md5ext){ const p=parseAsset(md5ext)||{ext:'png',assetId:''};
       return {name,assetId:p.assetId,md5ext,dataFormat:(p.ext==='svg'?'svg':p.ext),rotationCenterX:240,rotationCenterY:180}; }
     function stage(vm){ return vm && vm.runtime && vm.runtime.getTargetForStage ? vm.runtime.getTargetForStage() : null; }
-
-    const binder = ()=> (window.__SASC_BINDER && window.__SASC_BINDER.vm) || window.vm;
+    const binderVM = ()=> (window.__SASC_BINDER && window.__SASC_BINDER.vm) || window.vm;
 
     async function addApple(){
-      const vm = binder();
+      const vm = binderVM();
       if (!vm || !vm.addSprite){ __sascLog('[tools] vm not ready for addSprite'); return; }
       try{ const {arr} = await fetchAsset(APPLE_SVG); await vm.addSprite(new Uint8Array(arr)); __sascLog('[tools] Apple sprite added'); }
       catch(e){ __sascLog('[tools] Apple add failed: ' + (e && e.message || e)); }
     }
 
     async function addSkyAsBackdrop(){
-      const vm = binder();
+      const vm = binderVM();
       if (!vm){ __sascLog('[tools] VM not found yet'); return; }
       const st = stage(vm); if (!st){ __sascLog('[tools] No stage target'); return; }
       const cos = costumeObj('Blue Sky', SKY_SVG);
@@ -342,11 +298,10 @@
       }catch(e){ __sascLog('[tools] manual backdrop failed: ' + (e && e.message || e)); }
     }
 
-    // Wire buttons once the console exists
     document.addEventListener('DOMContentLoaded', ()=>{
       document.getElementById('btn-rebind').onclick = ()=> window.__SASC_BINDER && window.__SASC_BINDER.forceRebind();
       document.getElementById('btn-targets').onclick = ()=>{
-        const vm = binder();
+        const vm = binderVM();
         if (!vm || !vm.runtime || !vm.runtime.targets){ __sascLog('[targets] VM not ready'); return; }
         const ts = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ') + (t.getName ? t.getName() : t.sprite && t.sprite.name));
         __sascLog('[targets] ' + vm.runtime.targets.length + ' targets\n- ' + ts.join('\n- '));
