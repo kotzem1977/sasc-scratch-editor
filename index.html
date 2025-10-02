@@ -11,14 +11,14 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
     /* SASC console (light by default) */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:520px;max-height:56vh;background:#fff;color:#111;
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:560px;max-height:60vh;background:#fff;color:#111;
       font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #89a;border-radius:8px;z-index:99999}
     #sasc-console:not([data-theme="light"]){background:#0b0e;color:#0ff;border-color:#044}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#f4f7ff;border-bottom:1px solid #89a;border-radius:8px 8px 0 0}
     #sasc-console:not([data-theme="light"]) header{background:#022;border-bottom-color:#044}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(56vh - 88px);user-select:text}
-    #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(60vh - 104px);user-select:text}
+    #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:3px 7px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
     /* Minimal layout shim so GUI renders on custom builds */
@@ -35,7 +35,7 @@
 <body>
   <div id="app"></div>
 
-  <!-- SASC console (light by default) -->
+  <!-- SASC console -->
   <div id="sasc-console" data-theme="light">
     <header>
       <strong>SASC</strong>
@@ -46,30 +46,37 @@
       <span class="btnrow">
         <button id="btn-bind">Bind VM</button>
         <button id="btn-targets">List Targets</button>
-
-        <!-- Open GUI libraries (mirrors scratch.mit.edu behavior) -->
+      </span>
+      <span class="btnrow">
+        <!-- Open GUI libraries (same as Scratch’s own buttons) -->
         <button id="btn-lib-sprite">Sprite Library</button>
         <button id="btn-lib-backdrop">Backdrop Library</button>
         <button id="btn-lib-costume">Costume Library</button>
         <button id="btn-lib-sound">Sound Library</button>
-
-        <!-- Scripted tests: three paths each -->
-        <button id="btn-apple-a">Add Apple (A)</button>
-        <button id="btn-apple-b">Add Apple (B)</button>
-        <button id="btn-apple-c">Add Apple (C)</button>
-
-        <button id="btn-bg-a">Backdrop (A)</button>
-        <button id="btn-bg-b">Backdrop (B)</button>
-        <button id="btn-bg-c">Backdrop (C)</button>
-
-        <button id="btn-snd-a">Sound (A)</button>
-        <button id="btn-snd-b">Sound (B)</button>
-        <button id="btn-snd-c">Sound (C)</button>
+      </span>
+      <span class="btnrow">
+        <!-- Generic: add by md5 / by file (works even if libraries don’t) -->
+        <button id="btn-sprite-b">Add Sprite by md5</button>
+        <button id="btn-sprite-c">Add Sprite from file</button>
+        <button id="btn-bg-b">Backdrop by md5</button>
+        <button id="btn-bg-c">Backdrop from file</button>
+        <button id="btn-snd-b">Sound by md5</button>
+        <button id="btn-snd-c">Sound from file</button>
+      </span>
+      <span class="btnrow">
+        <!-- Diagnostic apples (you can ignore these if you want) -->
+        <button id="btn-apple-a">Apple A</button>
+        <button id="btn-apple-b">Apple B</button>
+        <button id="btn-apple-c">Apple C</button>
       </span>
     </header>
     <pre>SASC clear
 </pre>
   </div>
+
+  <!-- hidden file inputs for C-paths -->
+  <input id="file-image" type="file" accept=".svg,.png,.jpg,.jpeg,.gif,image/*" style="display:none"/>
+  <input id="file-sound" type="file" accept=".wav,.mp3,audio/*" style="display:none"/>
 
   <!-- 1) Console wiring -->
   <script>
@@ -82,12 +89,9 @@
 
       document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
       document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
-
       document.getElementById('btn-copy').onclick=async()=>{
-        try{
-          await navigator.clipboard.writeText(pre.textContent);
-          out('SASC','log copied to clipboard');
-        }catch(_){
+        try{ await navigator.clipboard.writeText(pre.textContent); out('SASC','log copied to clipboard'); }
+        catch(_){
           const r=document.createRange(); r.selectNodeContents(pre);
           const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
           const ok=document.execCommand('copy'); s.removeAllRanges();
@@ -96,14 +100,10 @@
       };
       document.getElementById('btn-save').onclick=()=>{
         const blob=new Blob([pre.textContent],{type:'text/plain'});
-        const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob);
-        a.download='sasc-log.txt';
-        a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sasc-log.txt'; a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),1000);
         out('SASC','log saved as sasc-log.txt');
       };
-
       window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
   </script>
@@ -228,14 +228,21 @@
     })();
   </script>
 
-  <!-- 7) Helpers/actions -->
+  <!-- 7) Helpers / actions -->
   <script>
-    /* ---------- constants ---------- */
-    const APPLE_MD5EXT   = '3826a4091a33e4d26f87a2fac7cf796b.svg';
-    const SKY_MD5EXT     = 'e7c147730f19d284bcd7b3f00af19bb6.svg'; // Blue Sky
-    const MEOW_MD5EXT    = '83c36d806dc92327b9e7049a565c6bff.wav'; // Meow
+    /* ---------------- constants ---------------- */
+    const APPLE_MD5EXT   = '3826a4091a33e4d26f87a2fac7cf796b.svg';   // Apple costume
+    const SKY_MD5EXT     = 'e7c147730f19d284bcd7b3f00af19bb6.svg';   // Blue Sky backdrop
+    const MEOW_MD5EXT    = '83c36d806dc92327b9e7049a565c6bff.wav';   // Meow sound
 
-    /* ---------- costume helpers ---------- */
+    /* ---------------- util: DOM & log ---------------- */
+    function downloadBlob(name, text){
+      const blob=new Blob([text],{type:'text/plain'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+
+    /* ---------------- asset helpers ---------------- */
     function costumeFromMd5(name, md5ext){
       const isSVG = /\.svg$/i.test(md5ext);
       const assetId = md5ext.slice(0,32);
@@ -273,6 +280,15 @@
       return read(rCdn);
     }
 
+    async function readLocalFile(file){
+      const ext=(file.name.split('.').pop()||'').toLowerCase();
+      const isSVG = ext==='svg';
+      const buf = await file.arrayBuffer();
+      const blob = new Blob([buf],{type:file.type|| (isSVG?'image/svg+xml':'application/octet-stream')});
+      const text = isSVG ? await (new Response(blob)).text() : null;
+      return {buf, blob, text, ext, isSVG, localName:file.name};
+    }
+
     function emitUiUpdates(vm){
       try{ vm.runtime.emit('PROJECT_CHANGED'); }catch(_){}
       try{ vm.runtime.emit('targetsUpdate'); }catch(_){}
@@ -281,7 +297,6 @@
     }
 
     function getSprites(vm){ return (vm.runtime.targets||[]).filter(t=>!t.isStage); }
-
     async function waitForNewSprite(vm, prevCount, name, timeout=2000){
       const t0=performance.now();
       while(performance.now()-t0<timeout){
@@ -295,37 +310,29 @@
       return null;
     }
 
-    // create+attach a skin, update model + GUI + stage
     async function applyCostumeToTarget(vm, target, md5ext, asset, opts={}){
       const storage = vm.runtime?.storage; if(!storage) throw new Error('No VM storage');
       const id = md5ext.slice(0,32);
       const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
       storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
 
-      // model update (append or replace)
       const costume = costumeFromMd5(opts.name || null, md5ext);
-      let idx = 0;
+      let idx=0;
       if (opts.replaceAll) { target.sprite.costumes = [costume]; idx=0; }
       else { target.sprite.costumes.push(costume); idx=target.sprite.costumes.length-1; }
 
-      // ensure drawable exists (esp. just after duplicate)
-      await new Promise(r=>requestAnimationFrame(r));
+      await new Promise(r=>requestAnimationFrame(r)); // ensure drawable exists
 
-      // renderer skin
-      let skinId = null;
+      let skinId=null;
       if (vm.renderer && target.drawableID != null) {
         if (asset.isSVG && vm.renderer.createSVGSkin) {
           const svgText = asset.text ?? await (new Response(asset.blob)).text();
-          try{
-            skinId = vm.renderer.createSVGSkin(svgText, costume.rotationCenterX, costume.rotationCenterY);
-          }catch(_){
-            skinId = vm.renderer.createSVGSkin(svgText);
-          }
+          try{ skinId = vm.renderer.createSVGSkin(svgText, costume.rotationCenterX, costume.rotationCenterY); }
+          catch(_){ skinId = vm.renderer.createSVGSkin(svgText); }
         } else if (!asset.isSVG && vm.renderer.createBitmapSkin) {
           const bmp = await createImageBitmap(asset.blob);
           skinId = vm.renderer.createBitmapSkin(bmp, 1);
         }
-
         if (skinId != null) {
           if (typeof vm.renderer.updateDrawableSkinId === 'function') {
             vm.renderer.updateDrawableSkinId(target.drawableID, skinId);
@@ -340,170 +347,7 @@
       emitUiUpdates(vm);
     }
 
-    /* ---------- Apple (three paths) ---------- */
-    async function addApple_A(){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const name='Apple (A)';
-      const before=getSprites(vm).length;
-      const spriteJson = {
-        isStage:false, name,
-        variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
-        currentCostume:0,
-        costumes:[costumeFromMd5(name, APPLE_MD5EXT)],
-        sounds:[],
-        volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
-        draggable:false, rotationStyle:"all around"
-      };
-      try{
-        if(typeof vm.addSprite!=='function') throw new Error('vm.addSprite not available');
-        await vm.addSprite(JSON.stringify(spriteJson));
-      }catch(e){ __sascTag('appleA','addSprite threw: '+(e&&e.message||e)); }
-      const tgt = await waitForNewSprite(vm, before, name, 2000);
-      if(!tgt){ __sascTag('appleA','no new sprite appeared'); return; }
-      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
-      const asset=await fetchAsset(APPLE_MD5EXT);
-      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
-      __sascTag('appleA','sprite created via addSprite(+apply)');
-    }
-
-    async function addApple_B(){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const sprites=getSprites(vm);
-      if(!sprites.length || typeof vm.duplicateSprite!=='function'){ __sascTag('appleB','duplicate path not available'); return; }
-      const before=sprites.length;
-      const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(e=>{__sascTag('appleB','duplicate failed: '+(e&&e.message||e)); return false;});
-      if(!ok) return;
-      const tgt = await waitForNewSprite(vm, before, null, 2000);
-      if(!tgt){ __sascTag('appleB','no new sprite after duplicate'); return; }
-      await new Promise(r=>requestAnimationFrame(r));
-      const name='Apple (B)';
-      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
-      const asset=await fetchAsset(APPLE_MD5EXT);
-      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
-      __sascTag('appleB','sprite created via duplicate+swap');
-    }
-
-    async function addApple_C(){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const name='Apple (C)';
-      const before=getSprites(vm).length;
-      let created=false;
-      try{
-        if(typeof vm.addSprite==='function'){
-          await vm.addSprite(JSON.stringify({
-            isStage:false, name,
-            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
-            currentCostume:0,
-            costumes:[costumeFromMd5(name, APPLE_MD5EXT)],
-            sounds:[],
-            volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
-            draggable:false, rotationStyle:"all around"
-          }));
-          const tgt = await waitForNewSprite(vm, before, name, 1200);
-          if(tgt){
-            const asset=await fetchAsset(APPLE_MD5EXT);
-            await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
-            __sascTag('appleC','sprite created via addSprite(+apply)');
-            created=true;
-          }
-        }
-      }catch(e){ __sascTag('appleC','addSprite threw: '+(e&&e.message||e)); }
-      if(!created){
-        __sascTag('appleC','falling back: applying Apple costume to selected sprite');
-        await addCostumeToSelected(name, APPLE_MD5EXT);
-      }
-    }
-
-    /* ---------- Backdrop (three paths) ---------- */
-    async function backdrop_A(){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      // Use GUI library (closest to scratch.mit.edu) — open it and let user choose
-      openBackdropLibrary();
-    }
-
-    async function backdrop_B(md5ext=SKY_MD5EXT){
-      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
-      const stage = vm.runtime.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
-      // If vm.addBackdrop exists, use it, then ensure bytes/skin
-      const asset = await fetchAsset(md5ext);
-      if (typeof vm.addBackdrop === 'function') {
-        try{
-          await vm.addBackdrop(md5ext, costumeFromMd5('Backdrop '+md5ext.slice(0,6), md5ext));
-          await applyCostumeToTarget(vm, stage, md5ext, asset, {replaceAll:false, name:'Backdrop '+md5ext.slice(0,6)});
-          __sascTag('backdrop','success via vm.addBackdrop (+bytes)');
-          return;
-        }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
-      }
-      // fallback to manual
-      await applyCostumeToTarget(vm, stage, md5ext, asset, {replaceAll:false, name:'Backdrop '+md5ext.slice(0,6)});
-      __sascTag('backdrop','success via manual stage injection');
-    }
-
-    async function backdrop_C(){
-      const md5ext = prompt('Backdrop md5.ext (svg/png):', SKY_MD5EXT);
-      if(!md5ext) return;
-      await backdrop_B(md5ext.trim());
-    }
-
-    /* ---------- Costume add (selected) ---------- */
-    async function addCostumeToSelected(name, md5ext){
-      const vm = window.vm || await bindVM(6000), GUI = window.GUI;
-      if(!vm?.runtime) throw new Error('vm missing');
-      const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-      if(!t) throw new Error('No editing target');
-
-      const asset = await fetchAsset(md5ext);
-      const isSVG = asset.isSVG;
-
-      if (GUI?.handleCostumeUpload) {
-        try{
-          await GUI.handleCostumeUpload(asset.blob, isSVG?'image/svg+xml':'image/png', t.id);
-          __sascTag('costume','success via GUI.handleCostumeUpload');
-          return;
-        }catch(e){ __sascTag('costume','GUI helper failed: '+(e&&e.message||e)); }
-      }
-      await applyCostumeToTarget(vm, t, md5ext, asset, {replaceAll:false, name});
-      __sascTag('costume','success via manual injection');
-    }
-
-    /* ---------- Sound (three paths) ---------- */
-    function supportsProgrammaticSound(vm){ return typeof vm?.addSound==='function'; }
-
-    async function sound_A(){ openSoundLibrary(); }
-
-    async function sound_B(md5ext=MEOW_MD5EXT){
-      const vm=window.vm || await bindVM(6000), GUI=window.GUI;
-      if(!vm?.runtime) throw new Error('vm missing');
-      const t = vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
-      if(!t) throw new Error('No editing target');
-
-      const asset=await fetchAsset(md5ext);
-
-      if(GUI?.handleSoundUpload){
-        try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
-        catch(e){ __sascTag('sound','GUI helper failed: '+(e&&e.message||e)); }
-      }
-      if(supportsProgrammaticSound(vm)){
-        try{
-          const id = md5ext.slice(0,32);
-          const ext = md5ext.split('.').pop().toLowerCase();
-          const snd={ name:'Sound '+md5ext.slice(0,6), assetId:id, md5ext, dataFormat:ext, format:'', rate:44100, sampleCount:0 };
-          await vm.addSound(md5ext, snd, t.id);
-          __sascTag('sound','success via vm.addSound');
-          return;
-        }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
-      }
-      __sascTag('sound','sound upload not supported in this build (use library or Sounds tab)');
-      throw new Error('No sound upload path available in this build');
-    }
-
-    async function sound_C(){
-      const md5ext=prompt('Sound md5.ext (wav/mp3):', MEOW_MD5EXT);
-      if(!md5ext) return;
-      await sound_B(md5ext.trim());
-    }
-
-    /* ---------- Open Scratch GUI libraries the same way the site does ---------- */
+    /* ---------------- Library openers ---------------- */
     function clickByAriaContains(text) {
       const all = document.querySelectorAll('[aria-label]');
       for (const el of all) {
@@ -554,33 +398,190 @@
       __sascTag('ui','Sound Library button not found in this layout');
     }
 
-    /* ---------- Buttons ---------- */
+    /* ---------------- Generic “md5” / “file” importers ---------------- */
+
+    async function ensureSpriteWithCostumeFromAsset(name, asset, md5ext){
+      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
+      const before=getSprites(vm).length;
+      // try native addSprite first
+      if (typeof vm.addSprite === 'function') {
+        try{
+          const model = {
+            isStage:false, name,
+            variables:{}, lists:{}, broadcasts:{}, blocks:{}, comments:{},
+            currentCostume:0,
+            costumes:[costumeFromMd5(name, md5ext)],
+            sounds:[], volume:100, layerOrder:1, visible:true, x:0, y:0, size:100, direction:90,
+            draggable:false, rotationStyle:"all around"
+          };
+          await vm.addSprite(JSON.stringify(model));
+          const tgt = await waitForNewSprite(vm, before, name, 1500);
+          if (tgt) { await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name}); return tgt; }
+        }catch(e){ __sascTag('sprite','addSprite failed: '+(e&&e.message||e)); }
+      }
+      // fallback: duplicate first sprite
+      const sprites=getSprites(vm);
+      if (sprites.length && typeof vm.duplicateSprite==='function'){
+        const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(()=>false);
+        if (ok) {
+          const tgt = await waitForNewSprite(vm, before, null, 1500);
+          if (tgt){ try{ await vm.renameSprite(tgt.id, name); }catch(_){}; await applyCostumeToTarget(vm, tgt, md5ext, asset, {replaceAll:true, name}); return tgt; }
+        }
+      }
+      throw new Error('No sprite creation path available');
+    }
+
+    async function spriteFromMd5Prompt(){
+      const md5ext = prompt('Sprite costume md5.ext (svg/png):', APPLE_MD5EXT);
+      if(!md5ext) return;
+      const asset = await fetchAsset(md5ext.trim());
+      const name = 'Sprite '+md5ext.slice(0,6);
+      await ensureSpriteWithCostumeFromAsset(name, asset, md5ext.trim());
+      __sascTag('sprite','added via md5 '+md5ext);
+    }
+
+    async function spriteFromFile(){
+      const inp=document.getElementById('file-image');
+      inp.onchange=async()=>{
+        const file=inp.files&&inp.files[0]; if(!file) return;
+        const asset=await readLocalFile(file);
+        const fakeMd5 = (crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
+        const name='Sprite '+(file.name||asset.ext);
+        await ensureSpriteWithCostumeFromAsset(name, asset, fakeMd5);
+        __sascTag('sprite','added from local file: '+(file.name||'file'));
+        inp.value='';
+      };
+      inp.click();
+    }
+
+    async function backdropFromMd5Prompt(){
+      const md5ext = prompt('Backdrop md5.ext (svg/png):', SKY_MD5EXT);
+      if(!md5ext) return;
+      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
+      const stage = vm.runtime.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
+      const asset=await fetchAsset(md5ext.trim());
+      await applyCostumeToTarget(vm, stage, md5ext.trim(), asset, {replaceAll:false, name:'Backdrop '+md5ext.slice(0,6)});
+      __sascTag('backdrop','added via md5 '+md5ext);
+    }
+
+    async function backdropFromFile(){
+      const inp=document.getElementById('file-image');
+      inp.onchange=async()=>{
+        const file=inp.files&&inp.files[0]; if(!file) return;
+        const asset=await readLocalFile(file);
+        const fakeMd5=(crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
+        const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
+        const stage = vm.runtime.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
+        await applyCostumeToTarget(vm, stage, fakeMd5, asset, {replaceAll:false, name:'Backdrop '+(file.name||asset.ext)});
+        __sascTag('backdrop','added from local file: '+(file.name||'file'));
+        inp.value='';
+      };
+      inp.click();
+    }
+
+    async function soundFromMd5Prompt(){
+      const md5ext=prompt('Sound md5.ext (wav/mp3):', MEOW_MD5EXT);
+      if(!md5ext) return;
+      const vm=window.vm || await bindVM(6000), GUI=window.GUI;
+      if(!vm?.runtime) throw new Error('vm missing');
+      const t=vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
+      if(!t) throw new Error('No editing target');
+      const asset=await fetchAsset(md5ext.trim());
+      if(GUI?.handleSoundUpload){
+        try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','added via GUI.handleSoundUpload (md5)'); return; }
+        catch(e){ __sascTag('sound','GUI sound helper failed: '+(e&&e.message||e)); }
+      }
+      if(typeof vm.addSound==='function'){
+        try{
+          const id=md5ext.slice(0,32), ext=md5ext.split('.').pop().toLowerCase();
+          const snd={name:'Sound '+md5ext.slice(0,6), assetId:id, md5ext, dataFormat:ext, format:'', rate:44100, sampleCount:0};
+          await vm.addSound(md5ext, snd, t.id);
+          __sascTag('sound','added via vm.addSound (md5)');
+          return;
+        }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
+      }
+      __sascTag('sound','sound upload not supported in this build (use Sound Library or Sounds tab)');
+    }
+
+    async function soundFromFile(){
+      const inp=document.getElementById('file-sound');
+      inp.onchange=async()=>{
+        const file=inp.files&&inp.files[0]; if(!file) return;
+        const vm=window.vm || await bindVM(6000), GUI=window.GUI;
+        if(!vm?.runtime) throw new Error('vm missing');
+        const t=vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.();
+        if(!t) throw new Error('No editing target');
+        try{
+          if(GUI?.handleSoundUpload){ await GUI.handleSoundUpload(file, t.id); __sascTag('sound','added from local file via GUI'); }
+          else if(typeof vm.addSound==='function'){
+            const asset=await readLocalFile(file);
+            const fakeMd5=(crypto?.randomUUID?.()||String(Math.random()).slice(2)).replace(/-/g,'').padEnd(32,'0').slice(0,32)+'.'+asset.ext;
+            const id=fakeMd5.slice(0,32);
+            const snd={name:file.name||('Sound '+asset.ext), assetId:id, md5ext:fakeMd5, dataFormat:asset.ext, format:'', rate:44100, sampleCount:0};
+            await vm.addSound(fakeMd5, snd, t.id);
+            __sascTag('sound','added from local file via vm.addSound');
+          }else{
+            __sascTag('sound','sound upload not supported in this build (use Sound Library)');
+          }
+        }catch(e){ __sascTag('sound','local file add failed: '+(e&&e.message||e)); }
+        inp.value='';
+      };
+      inp.click();
+    }
+
+    /* ---------------- Apples (diagnostics) ---------------- */
+    async function addApple_A(){
+      const asset=await fetchAsset(APPLE_MD5EXT);
+      await ensureSpriteWithCostumeFromAsset('Apple (A)', asset, APPLE_MD5EXT);
+      __sascTag('appleA','ok');
+    }
+    async function addApple_B(){
+      const vm = window.vm || await bindVM(6000); if(!vm?.runtime) throw new Error('vm missing');
+      const sprites=getSprites(vm);
+      if(!sprites.length || typeof vm.duplicateSprite!=='function'){ __sascTag('appleB','duplicate path not available'); return; }
+      const before=sprites.length;
+      const ok = await vm.duplicateSprite(sprites[0].id).then(()=>true).catch(e=>{__sascTag('appleB','duplicate failed: '+(e&&e.message||e)); return false;});
+      if(!ok) return;
+      const tgt = await waitForNewSprite(vm, before, null, 2000);
+      if(!tgt){ __sascTag('appleB','no new sprite after duplicate'); return; }
+      await new Promise(r=>requestAnimationFrame(r));
+      const name='Apple (B)';
+      try{ await vm.renameSprite(tgt.id, name); }catch(_){ if(tgt.sprite) tgt.sprite.name=name; }
+      const asset=await fetchAsset(APPLE_MD5EXT);
+      await applyCostumeToTarget(vm, tgt, APPLE_MD5EXT, asset, {replaceAll:true, name});
+      __sascTag('appleB','sprite created via duplicate+swap');
+    }
+    async function addApple_C(){
+      const asset=await fetchAsset(APPLE_MD5EXT);
+      await ensureSpriteWithCostumeFromAsset('Apple (C)', asset, APPLE_MD5EXT);
+      __sascTag('appleC','ok');
+    }
+
+    /* ---------------- Buttons ---------------- */
     document.getElementById('btn-targets').onclick=()=>{
       const vm=window.vm; if(!vm||!vm.runtime) return __sascTag('targets','VM not ready');
       const ts=vm.runtime.targets||[]; __sascLog('[targets] '+ts.length+' targets');
       ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite?.name||'(?)')));
     };
 
-    // Library buttons
+    // Library openers
     document.getElementById('btn-lib-sprite').onclick = openSpriteLibrary;
     document.getElementById('btn-lib-backdrop').onclick = openBackdropLibrary;
     document.getElementById('btn-lib-costume').onclick = openCostumeLibrary;
     document.getElementById('btn-lib-sound').onclick = openSoundLibrary;
 
-    // Apple tests
+    // Generic md5/file importers (these are the main reliable tools)
+    document.getElementById('btn-sprite-b').onclick = ()=>spriteFromMd5Prompt().catch(e=>__sascTag('sprite','md5 failed: '+(e&&e.message||e)));
+    document.getElementById('btn-sprite-c').onclick = ()=>spriteFromFile();
+    document.getElementById('btn-bg-b').onclick     = ()=>backdropFromMd5Prompt().catch(e=>__sascTag('backdrop','md5 failed: '+(e&&e.message||e)));
+    document.getElementById('btn-bg-c').onclick     = ()=>backdropFromFile();
+    document.getElementById('btn-snd-b').onclick    = ()=>soundFromMd5Prompt().catch(e=>__sascTag('sound','md5 failed: '+(e&&e.message||e)));
+    document.getElementById('btn-snd-c').onclick    = ()=>soundFromFile();
+
+    // Apple diagnostics
     document.getElementById('btn-apple-a').onclick=()=>{ addApple_A().catch(e=>__sascTag('appleA','failed: '+(e&&e.message||e))); };
     document.getElementById('btn-apple-b').onclick=()=>{ addApple_B().catch(e=>__sascTag('appleB','failed: '+(e&&e.message||e))); };
     document.getElementById('btn-apple-c').onclick=()=>{ addApple_C().catch(e=>__sascTag('appleC','failed: '+(e&&e.message||e))); };
-
-    // Backdrop tests
-    document.getElementById('btn-bg-a').onclick=()=>{ backdrop_A().catch(e=>__sascTag('backdrop','A failed: '+(e&&e.message||e))); };
-    document.getElementById('btn-bg-b').onclick=()=>{ backdrop_B().catch(e=>__sascTag('backdrop','B failed: '+(e&&e.message||e))); };
-    document.getElementById('btn-bg-c').onclick=()=>{ backdrop_C().catch(e=>__sascTag('backdrop','C failed: '+(e&&e.message||e))); };
-
-    // Sound tests
-    document.getElementById('btn-snd-a').onclick=()=>{ sound_A(); };
-    document.getElementById('btn-snd-b').onclick=()=>{ sound_B().catch(e=>__sascTag('sound','B failed: '+(e&&e.message||e))); };
-    document.getElementById('btn-snd-c').onclick=()=>{ sound_C().catch(e=>__sascTag('sound','C failed: '+(e&&e.message||e))); };
 
     // auto-bind after mount
     (window.bindVM||(()=>Promise.resolve(null)))(20000);
