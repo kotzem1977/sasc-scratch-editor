@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (fiber-binder)</title>
+  <title>SASC Scratch Editor — index (fiber-scan+observer)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -21,7 +21,7 @@
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
-    /* Minimal CSS shim to keep layout usable without external CSS */
+    /* Minimal shim */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="stage-wrapper"]{position:relative;z-index:0;flex:0 0 auto}
     [class*="stage-header"]{position:relative;z-index:2}
@@ -56,15 +56,15 @@
 
   <script>
     (function(){
-      const pre = document.querySelector('#sasc-console pre');
-      const box = document.getElementById('sasc-console');
-      const out = (tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{ pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
-      window.__sascLog = (m)=>out('',m);
-      window.__sascTag = (t,m)=>out(t,m);
+      const pre=document.querySelector('#sasc-console pre');
+      const box=document.getElementById('sasc-console');
+      const out=(tag,msg)=>{ const line=(tag?(`[${tag}] `):'')+msg; try{pre.textContent+=line+'\n'; pre.scrollTop=pre.scrollHeight;}catch(_){} console.log(line); };
+      window.__sascLog=(m)=>out('',m);
+      window.__sascTag=(t,m)=>out(t,m);
       document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
       document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
       window.addEventListener('click',e=>out('Click',e.target.tagName));
-      window.addEventListener('unhandledrejection',e=>out('unhandledrejection', (e.reason&&(e.reason.stack||e.reason))));
+      window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
   </script>
 
@@ -74,13 +74,13 @@
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
   <script>
     (function(){
-      if (window.React && !window.react){ window.react=window.React; __sascTag('SASC','react alias set');}
-      if (window.ReactDOM && !window['react-dom']){ window['react-dom']=window.ReactDOM; __sascTag('SASC','react-dom alias set');}
-      if (window.Redux && !window.redux){ window.redux=window.Redux; __sascTag('SASC','redux alias set');}
+      if(window.React && !window.react){ window.react=window.React; __sascTag('SASC','react alias set');}
+      if(window.ReactDOM && !window['react-dom']){ window['react-dom']=window.ReactDOM; __sascTag('SASC','react-dom alias set');}
+      if(window.Redux && !window.redux){ window.redux=window.Redux; __sascTag('SASC','redux alias set');}
     })();
   </script>
 
-  <!-- Local-first asset hooks with fallback -->
+  <!-- Local-first asset hooks -->
   <script>
     (function(){
       const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
@@ -106,10 +106,10 @@
     })();
   </script>
 
-  <!-- Your GUI bundle (cache-busted) -->
-  <script src="scratch-gui.js?v=fiber-001"></script>
+  <!-- GUI bundle -->
+  <script src="scratch-gui.js?v=fiber-scan-obs-001"></script>
 
-  <!-- Mount GUI (HOC chain or GUI.render) -->
+  <!-- Mount GUI -->
   <script>
     (function mount(){
       try{
@@ -135,124 +135,155 @@
     })();
   </script>
 
-  <!-- VM binder (adds fiber scan) + tools -->
+  <!-- VM binder (deep fiber scan + observer) + tools -->
   <script>
     (function(){
-      /* ---------- FIBER SCAN UTILITIES ---------- */
-      function getReactFiberFromDom(node){
+      /* --------- fiber discovery that scans the ENTIRE #app subtree --------- */
+      function fiberKeyOf(node){
         if(!node) return null;
         for(const k in node){
-          if(k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')) return node[k];
-          if(k==='__reactContainer$') return node[k];
+          if(k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')) return k;
         }
         return null;
       }
+      function findAnyFiberNode(root){
+        if(!root) return null;
+        // breadth-first to find the first node that has a fiber key
+        const q=[root];
+        while(q.length){
+          const n=q.shift();
+          const key=fiberKeyOf(n);
+          if(key) return n;
+          // include shadow roots if any
+          if(n.shadowRoot) q.push(n.shadowRoot);
+          // children
+          if(n.childNodes) for(const c of n.childNodes) q.push(c);
+        }
+        return null;
+      }
+      function getReactFiberFromDom(node){
+        const k=fiberKeyOf(node); return k?node[k]:null;
+      }
       function* walkFibers(root){
         if(!root) return;
-        const q=[root];
-        const seen=new Set();
-        while(q.length){
-          const f=q.shift();
+        const seen=new Set(); const stack=[root];
+        while(stack.length){
+          const f=stack.pop();
           if(!f || seen.has(f)) continue;
           seen.add(f);
           yield f;
-          if(f.child) q.push(f.child);
-          if(f.sibling) q.push(f.sibling);
-          if(f.return && !seen.has(f.return)) q.push(f.return);
+          if(f.child) stack.push(f.child);
+          if(f.sibling) stack.push(f.sibling);
+          if(f.return && !seen.has(f.return)) stack.push(f.return);
         }
       }
       function tryExtractStoreFromFiber(f){
         try{
           const n=f.stateNode;
-          if(n && n.store && n.store.getState) return n.store;                 // old Provider
-          if(n && n.props && n.props.store && n.props.store.getState) return n.props.store; // some builds
+          if(n && n.store && n.store.getState) return n.store;                 // react-redux Provider classic
+          if(n && n.props && n.props.store && n.props.store.getState) return n.props.store; // alt shapes
         }catch(_){}
         return null;
       }
       function tryExtractVmFromFiber(f){
         try{
-          const props = f.memoizedProps || f.pendingProps || f.stateNode && f.stateNode.props;
-          const state = f.memoizedState || f.stateNode && f.stateNode.state;
-          const candidates = [props, state, f.stateNode, f];
+          const props=f.memoizedProps || f.pendingProps || (f.stateNode && f.stateNode.props);
+          const state=f.memoizedState || (f.stateNode && f.stateNode.state);
+          const candidates=[props,state,f.stateNode,f];
           for(const c of candidates){
-            if(!c) continue;
+            if(!c || typeof c!=='object') continue;
             for(const k in c){
               const v=c[k];
-              if(v && typeof v==='object' && v.runtime && v.runtime.targets) return v; // looks like VM
+              if(v && typeof v==='object' && v.runtime && v.runtime.targets) return v; // VM shape
             }
           }
         }catch(_){}
         return null;
       }
 
-      /* ---------- STORE HELPERS ---------- */
-      const storePaths = [
-        s => s && s.getState && s.getState(),
-        s => (s && s.getState && s.getState().vm),
-        s => (s && s.getState && s.getState().scratchGui && s.getState().scratchGui.vm),
-        s => (s && s.getState && s.getState().scratch && s.getState().scratch.vm)
+      /* --------- store helpers --------- */
+      const storePaths=[
+        s=>s&&s.getState&&s.getState(),
+        s=>s&&s.getState&&s.getState().vm,
+        s=>s&&s.getState&&s.getState().scratchGui&&s.getState().scratchGui.vm,
+        s=>s&&s.getState&&s.getState().scratch&&s.getState().scratch.vm
       ];
       function vmFromStore(store){
         for(const g of storePaths){
-          try{
-            const v = g(store);
-            if(v && v.runtime) return v;
-          }catch(_){}
+          try{ const v=g(store); if(v && v.runtime) return v; }catch(_){}
         }
         return null;
       }
 
-      /* ---------- BINDER ---------- */
+      let bound=false;
+      let observer=null;
+
       async function bindVM(timeoutMs=15000){
         const t0=Date.now();
-        const app = document.getElementById('app');
+        const app=document.getElementById('app');
 
-        while(Date.now()-t0<timeoutMs){
-          // 1) direct globals
+        // helper to try once
+        function tryOnce(){
+          // direct globals
           const GUI=window.GUI||{};
-          const direct = window.vm || GUI.vm;
-          if(direct && direct.runtime){ window.vm = direct; __sascTag('VM','ready (direct)'); return direct; }
+          const direct=window.vm || GUI.vm;
+          if(direct && direct.runtime){ window.vm=direct; __sascTag('VM','ready (direct)'); return direct; }
 
-          // 2) fiber scan for store/vm
-          const fiber = getReactFiberFromDom(app);
-          if(fiber){
-            for(const f of walkFibers(fiber)){
-              const vmCandidate = tryExtractVmFromFiber(f);
-              if(vmCandidate && vmCandidate.runtime){
-                window.vm = vmCandidate; __sascTag('VM','ready (fiber props/state)'); return vmCandidate;
-              }
-              const storeCandidate = tryExtractStoreFromFiber(f);
-              if(storeCandidate){
-                // subscribe once to catch late init
-                try{
-                  const unsub = storeCandidate.subscribe(()=>{
-                    const v = vmFromStore(storeCandidate);
-                    if(v && v.runtime){ window.vm=v; __sascTag('VM','ready (store subscribe)'); try{unsub();}catch(_){ } }
-                  });
-                }catch(_){}
-                const vNow = vmFromStore(storeCandidate);
-                if(vNow && vNow.runtime){ window.vm=vNow; __sascTag('VM','ready (store immediate)'); return vNow; }
-              }
+          // fiber from any descendant
+          const fiberHost=findAnyFiberNode(app);
+          if(!fiberHost) return null;
+          const rootFiber=getReactFiberFromDom(fiberHost);
+          if(!rootFiber) return null;
+
+          for(const f of walkFibers(rootFiber)){
+            const vmCandidate=tryExtractVmFromFiber(f);
+            if(vmCandidate && vmCandidate.runtime){
+              window.vm=vmCandidate; __sascTag('VM','ready (fiber props/state)'); return vmCandidate;
+            }
+            const storeCandidate=tryExtractStoreFromFiber(f);
+            if(storeCandidate){
+              // live subscribe in case VM appears later
+              try{
+                const unsub=storeCandidate.subscribe(()=>{
+                  if(bound) return;
+                  const v=vmFromStore(storeCandidate);
+                  if(v && v.runtime){ window.vm=v; bound=true; __sascTag('VM','ready (store subscribe)'); try{unsub();}catch(_){ } }
+                });
+              }catch(_){}
+              const vNow=vmFromStore(storeCandidate);
+              if(vNow && vNow.runtime){ window.vm=vNow; __sascTag('VM','ready (store immediate)'); return vNow; }
             }
           }
+          return null;
+        }
 
+        // observe DOM for changes while we wait
+        if(!observer){
+          observer=new MutationObserver(()=>{ if(bound) return; const v=tryOnce(); if(v){ bound=true; } });
+          observer.observe(app,{childList:true,subtree:true});
+        }
+
+        while(Date.now()-t0<timeoutMs && !bound){
+          const v=tryOnce();
+          if(v){ bound=true; return v; }
           await new Promise(r=>setTimeout(r,250));
           __sascLog('still waiting for VM…');
         }
-        __sascLog('rebind: VM not found after fiber scan');
-        return null;
+
+        if(!bound) __sascLog('rebind: VM not found after fiber scan');
+        return bound?window.vm:null;
       }
 
-      /* ---------- ASSET HELPERS + ACTIONS ---------- */
+      /* --------- asset helpers + actions (same as before) --------- */
       function parseMd5ext(s){ const m=String(s||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{id:m[1],ext:m[2].toLowerCase()}:null; }
       function mimeFromExt(ext){
-        if(ext==='svg') return 'image/svg+xml';
-        if(ext==='png') return 'image/png';
-        if(ext==='jpg'||ext==='jpeg') return 'image/jpeg';
-        if(ext==='gif') return 'image/gif';
-        if(ext==='wav') return 'audio/wav';
-        if(ext==='mp3') return 'audio/mp3';
-        return 'application/octet-stream';
+        if(ext==='svg')return'image/svg+xml';
+        if(ext==='png')return'image/png';
+        if(ext==='jpg'||ext==='jpeg')return'image/jpeg';
+        if(ext==='gif')return'image/gif';
+        if(ext==='wav')return'audio/wav';
+        if(ext==='mp3')return'audio/mp3';
+        return'application/octet-stream';
       }
       async function fetchAsset(md5ext){
         const base=location.pathname.replace(/\/[^/]*$/,'/').replace(/\/$/,'');
@@ -264,33 +295,30 @@
       }
 
       async function addSpriteByMd5ext(name, md5ext){
-        const vm = window.vm || await bindVM(4000);
+        const vm=window.vm || await bindVM(4000);
         if(!vm || !vm.addSprite){ __sascTag('tools','vm not ready for addSprite'); return; }
-        const asset = await fetchAsset(md5ext);
+        const asset=await fetchAsset(md5ext);
         await vm.addSprite(new Uint8Array(asset.buf));
         __sascTag('tools','sprite added '+(name||md5ext));
       }
 
       async function addBackdropSmart(name, md5ext){
-        const vm = window.vm || await bindVM(4000), GUI=window.GUI;
+        const vm=window.vm || await bindVM(4000), GUI=window.GUI;
         if(!vm) throw new Error('vm missing');
-        const asset = await fetchAsset(md5ext);
-        const isSVG = /\.svg$/i.test(md5ext);
+        const asset=await fetchAsset(md5ext);
+        const isSVG=/\.svg$/i.test(md5ext);
 
         if(GUI && typeof GUI.handleBackdropUpload==='function'){
-          try{ await GUI.handleBackdropUpload(asset.blob, isSVG?'image/svg+xml':'image/png'); __sascTag('backdrop','success via GUI.handleBackdropUpload'); return; }
+          try{ await GUI.handleBackdropUpload(asset.blob,isSVG?'image/svg+xml':'image/png'); __sascTag('backdrop','success via GUI.handleBackdropUpload'); return; }
           catch(e){ __sascTag('backdrop','GUI.handleBackdropUpload failed: '+(e&&e.message||e)); }
         }
         if(typeof vm.addBackdrop==='function'){
           try{
             const costume={name:name||('Backdrop '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180};
-            await vm.addBackdrop(md5ext, costume);
-            __sascTag('backdrop','success via vm.addBackdrop');
-            return;
+            await vm.addBackdrop(md5ext,costume); __sascTag('backdrop','success via vm.addBackdrop'); return;
           }catch(e){ __sascTag('backdrop','vm.addBackdrop failed: '+(e&&e.message||e)); }
         }
-        const stage = vm.runtime && vm.runtime.getTargetForStage && vm.runtime.getTargetForStage();
-        if(!stage) throw new Error('No stage target');
+        const stage=vm.runtime?.getTargetForStage?.(); if(!stage) throw new Error('No stage target');
         const costume={name:name||('Backdrop '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180};
         stage.sprite.costumes.push(costume);
         stage.setCostume(stage.sprite.costumes.length-1);
@@ -299,23 +327,21 @@
       }
 
       async function addCostumeToSelected(name, md5ext){
-        const vm = window.vm || await bindVM(4000), GUI=window.GUI;
+        const vm=window.vm || await bindVM(4000), GUI=window.GUI;
         if(!vm) throw new Error('vm missing');
-        const t = vm.runtime && (vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.());
+        const t = vm.runtime?.getEditingTarget?.() || vm.runtime?.getTargetForStage?.();
         if(!t) throw new Error('No editing target');
-        const asset = await fetchAsset(md5ext);
-        const isSVG=/\.svg$/i.test(md5ext);
 
+        const asset=await fetchAsset(md5ext);
+        const isSVG=/\.svg$/i.test(md5ext);
         if(GUI && typeof GUI.handleCostumeUpload==='function'){
-          try{ await GUI.handleCostumeUpload(asset.blob, isSVG?'image/svg+xml':'image/png', t.id); __sascTag('costume','success via GUI.handleCostumeUpload'); return; }
+          try{ await GUI.handleCostumeUpload(asset.blob,isSVG?'image/svg+xml':'image/png',t.id); __sascTag('costume','success via GUI.handleCostumeUpload'); return; }
           catch(e){ __sascTag('costume','GUI.handleCostumeUpload failed: '+(e&&e.message||e)); }
         }
         if(typeof vm.addCostume==='function'){
           try{
             const costume={name:name||('Costume '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180};
-            await vm.addCostume(costume, t.id);
-            __sascTag('costume','success via vm.addCostume');
-            return;
+            await vm.addCostume(costume,t.id); __sascTag('costume','success via vm.addCostume'); return;
           }catch(e){ __sascTag('costume','vm.addCostume failed: '+(e&&e.message||e)); }
         }
         t.sprite.costumes.push({name:name||('Costume '+md5ext.slice(0,6)), md5ext, dataFormat:isSVG?'svg':'png', rotationCenterX:240, rotationCenterY:180});
@@ -325,53 +351,51 @@
       }
 
       async function addSoundToSelected(name, md5ext){
-        const vm = window.vm || await bindVM(4000), GUI=window.GUI;
+        const vm=window.vm || await bindVM(4000), GUI=window.GUI;
         if(!vm) throw new Error('vm missing');
-        const t = vm.runtime && (vm.runtime.getEditingTarget?.() || vm.runtime.getTargetForStage?.());
+        const t = vm.runtime?.getEditingTarget?.() || vm.runtime?.getTargetForStage?.();
         if(!t) throw new Error('No editing target');
-        const asset = await fetchAsset(md5ext);
 
+        const asset=await fetchAsset(md5ext);
         if(GUI && typeof GUI.handleSoundUpload==='function'){
-          try{ await GUI.handleSoundUpload(asset.blob, t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
+          try{ await GUI.handleSoundUpload(asset.blob,t.id); __sascTag('sound','success via GUI.handleSoundUpload'); return; }
           catch(e){ __sascTag('sound','GUI.handleSoundUpload failed: '+(e&&e.message||e)); }
         }
         if(typeof vm.addSound==='function'){
           try{
             const p=parseMd5ext(md5ext)||{id:'',ext:'wav'};
             const snd={name:name||('Sound '+md5ext.slice(0,6)), assetId:p.id, md5ext, dataFormat:p.ext, format:'', rate:44100, sampleCount:0};
-            await vm.addSound(md5ext, snd, t.id);
-            __sascTag('sound','success via vm.addSound');
-            return;
+            await vm.addSound(md5ext,snd,t.id); __sascTag('sound','success via vm.addSound'); return;
           }catch(e){ __sascTag('sound','vm.addSound failed: '+(e&&e.message||e)); }
         }
         throw new Error('No sound upload path available');
       }
 
       // Wire buttons
-      document.getElementById('btn-bind').onclick = ()=>bindVM(8000);
-      document.getElementById('btn-targets').onclick = ()=>{
+      document.getElementById('btn-bind').onclick=()=>bindVM(10000);
+      document.getElementById('btn-targets').onclick=()=>{
         const vm=window.vm;
         if(!vm||!vm.runtime) return __sascTag('targets','VM not ready');
         const ts=vm.runtime.targets||[];
         __sascLog('[targets] '+ts.length+' targets');
         ts.forEach(t=>__sascLog('- ['+(t.isStage?'STAGE':'SPRITE')+'] '+(t.getName?t.getName():t.sprite&&t.sprite.name||'(?)')));
       };
-      document.getElementById('btn-apple').onclick = ()=>addSpriteByMd5ext('Apple','3826a4091a33e4d26f87a2fac7cf796b.svg').catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
-      document.getElementById('btn-backdrop').onclick = ()=>{
+      document.getElementById('btn-apple').onclick=()=>addSpriteByMd5ext('Apple','3826a4091a33e4d26f87a2fac7cf796b.svg').catch(e=>__sascTag('tools','apple failed: '+(e&&e.message||e)));
+      document.getElementById('btn-backdrop').onclick=()=>{
         const md5ext=prompt('Backdrop md5.ext (svg/png):','e7c147730f19d284bcd7b3f00af19bb6.svg'); if(!md5ext) return;
-        addBackdropSmart('Backdrop '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
+        addBackdropSmart('Backdrop '+md5ext.slice(0,6),md5ext.trim()).catch(e=>__sascTag('tools','add backdrop failed: '+(e&&e.message||e)));
       };
-      document.getElementById('btn-costume').onclick = ()=>{
+      document.getElementById('btn-costume').onclick=()=>{
         const md5ext=prompt('Costume md5.ext (svg/png):','3826a4091a33e4d26f87a2fac7cf796b.svg'); if(!md5ext) return;
-        addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
+        addCostumeToSelected('Costume '+md5ext.slice(0,6),md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
       };
-      document.getElementById('btn-sound').onclick = ()=>{
+      document.getElementById('btn-sound').onclick=()=>{
         const md5ext=prompt('Sound md5.ext (wav/mp3):','0b1e3033140d094563248e61de4039e5.wav'); if(!md5ext) return;
-        addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
+        addSoundToSelected('Sound '+md5ext.slice(0,6),md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
       };
 
-      // auto-attempt after GUI mount
-      bindVM(15000);
+      // auto-bind after GUI mounts + observe changes
+      bindVM(20000);
     })();
   </script>
 </body>
