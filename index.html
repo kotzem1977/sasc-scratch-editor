@@ -3,22 +3,21 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — modular (with internal library picker)</title>
+  <title>SASC Scratch Editor — bridge (CORS-safe libraries)</title>
   <link rel="icon" href="./favicon.ico"/>
 
-  <!-- Simple console theme: light by default for readability -->
   <style>
     html,body,#app{height:100%;margin:0}
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
-    /* SASC console (light theme by default) */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:58vh;background:#fff; color:#111;
-      font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #cbd5e1;border-radius:10px;z-index:99999; box-shadow:0 6px 30px rgba(0,0,0,.25)}
+    /* SASC console (light by default) */
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:440px;max-height:60vh;background:#fff;color:#111;
+      font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #cbd5e1;border-radius:10px;z-index:99999;box-shadow:0 6px 30px rgba(0,0,0,.25)}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 10px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-radius:10px 10px 0 0}
     #sasc-console header strong{margin-right:auto;letter-spacing:.3px}
-    #sasc-console .row{display:flex;gap:6px;width:100%;flex-wrap:wrap}
-    #sasc-console pre{margin:0;padding:8px 10px;white-space:pre-wrap;overflow:auto;max-height:calc(58vh - 56px)}
-    #sasc-console button{all:unset;cursor:pointer;color:#111;padding:4px 8px;border:1px solid #cbd5e1;border-radius:8px; background:#fff}
+    #sasc-console .row{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+    #sasc-console pre{margin:0;padding:8px 10px;white-space:pre-wrap;overflow:auto;max-height:calc(60vh - 56px)}
+    #sasc-console button{all:unset;cursor:pointer;color:#111;padding:4px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff}
     #sasc-console button:hover{background:#eef2f7}
     #sasc-console[data-theme="dark"]{background:#0b0e13;color:#e5e7eb;border-color:#1f2937}
     #sasc-console[data-theme="dark"] header{background:#0f172a;border-bottom-color:#1f2937}
@@ -50,12 +49,10 @@
     canvas{cursor:default}
   </style>
 
-  <!-- React UMDs (must come before scratch-gui.js) -->
+  <!-- React UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-
-  <!-- 🔧 Critical: alias globals BEFORE loading scratch-gui.js -->
   <script>
     (function(){
       if (window.React && !window.react) window.react = window.React;
@@ -111,13 +108,12 @@
 </pre>
   </div>
 
-  <!-- hidden file inputs for “C: File” paths -->
+  <!-- hidden file inputs -->
   <input id="file-image" type="file" accept=".svg,.png,.jpg,.jpeg,.gif,image/*" hidden />
   <input id="file-sound" type="file" accept=".wav,.mp3,audio/*" hidden />
 
-  <!-- Console wiring + local-first hooks -->
+  <!-- SASC logging + local-first hooks -->
   <script>
-    // --- SASC console ---
     (function(){
       const pre=document.getElementById('sasc-log');
       const box=document.getElementById('sasc-console');
@@ -132,7 +128,6 @@
       window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
 
-    // --- Local-first asset redirector for internalapi/asset/... (optional, harmless) ---
     (function(){
       const base=location.pathname.replace(/\/[^/]*$/,'/'); const repoRoot=base.replace(/\/$/,'');
       const toLocal=u=>{ const m=u&&u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i); return m?(repoRoot+'/static/assets/'+m[1]):null; };
@@ -157,12 +152,11 @@
     })();
   </script>
 
-  <!-- Your GUI bundle -->
-  <script src="scratch-gui.js?v=modular-001"></script>
+  <!-- GUI bundle -->
+  <script src="scratch-gui.js?v=bridge-2"></script>
 
-  <!-- Mount GUI + VM binder -->
+  <!-- VM bind + mount -->
   <script>
-    // Robust VM binder (fiber scan + store subscribe)
     (function(){
       function fiberKeyOf(n){ if(!n) return null; for(const k in n){ if(k.startsWith('__reactFiber$')||k.startsWith('__reactInternalInstance$')) return k; } return null; }
       function findAnyFiberNode(root){ if(!root) return null; const q=[root]; while(q.length){ const n=q.shift(); if(fiberKeyOf(n)) return n; if(n.shadowRoot) q.push(n.shadowRoot); if(n.childNodes) for(const c of n.childNodes) q.push(c); } return null; }
@@ -204,7 +198,6 @@
       }
       window.bindVM = bindVM;
 
-      // Mount GUI
       (function mount(){
         try{
           const app=document.getElementById('app');
@@ -214,7 +207,7 @@
           if (typeof GUI.render === 'function'){
             GUI.render(app);
             __sascTag('SASC','GUI mounted via HashParser(ProjectLoader(AppState(GUI))) with projectId=0');
-          }else{
+          } else {
             let Wrapped=GUI.default||GUI.GUI||GUI;
             if(typeof GUI.AppStateHOC==='function') Wrapped=GUI.AppStateHOC(Wrapped);
             if(typeof GUI.ProjectLoaderHOC==='function') Wrapped=GUI.ProjectLoaderHOC(Wrapped);
@@ -227,7 +220,6 @@
         }catch(e){ __sascTag('SASC','BOOT ERROR: '+(e&&e.message)); }
       })();
 
-      // Wire basic buttons
       document.getElementById('btn-bind').onclick=()=>bindVM(10000);
       document.getElementById('btn-targets').onclick=()=>{
         const vm=window.vm; if(!vm?.runtime) return __sascTag('targets','VM not ready');
@@ -237,15 +229,13 @@
     })();
   </script>
 
-  <!-- Inline helpers: asset fetch/store + renderer skin (self-contained) -->
+  <!-- Asset + injection helpers -->
   <script>
-    // tiny mime helper
     function mimeFromExt(ext){
       if(ext==='svg')return'image/svg+xml'; if(ext==='png')return'image/png'; if(ext==='jpg'||ext==='jpeg')return'image/jpeg';
       if(ext==='gif')return'image/gif'; if(ext==='wav')return'audio/wav'; if(ext==='mp3')return'audio/mp3';
       return 'application/octet-stream';
     }
-    // fetch asset by md5.ext (from assets.scratch.mit.edu or local-first shim)
     async function fetchAsset(md5ext){
       const ext = (md5ext.split('.').pop()||'').toLowerCase();
       const isSVG = ext==='svg';
@@ -265,8 +255,8 @@
     function emitUi(vm){ try{vm.runtime.emit('PROJECT_CHANGED');}catch(_){ } try{vm.runtime.emit('targetsUpdate');}catch(_){ } }
     async function storeImageAsset(vm, asset){
       const storage = vm.runtime?.storage; if(!storage) throw new Error('No VM storage');
-      const id = (asset.md5ext||'').slice(0,32) || (crypto.randomUUID?crypto.randomUUID().replace(/-/g,'').slice(0,32):('id'+Date.now()));
-      const type = asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
+      const id=(asset.md5ext||'').slice(0,32) || (crypto.randomUUID?crypto.randomUUID().replace(/-/g,'').slice(0,32):('id'+Date.now()));
+      const type=asset.isSVG ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
       storage.createAsset(type, asset.ext, new Uint8Array(asset.buf), id);
     }
     async function applySkin(vm, target, asset){
@@ -284,7 +274,7 @@
       }
       return null;
     }
-    async function waitForNewSprite(vm, beforeIds, ms=1500){
+    async function waitForNewSprite(vm, beforeIds, ms=1800){
       const end=Date.now()+ms;
       while(Date.now()<end){
         const ids=(vm.runtime.targets||[]).map(t=>t.id);
@@ -306,10 +296,8 @@
             currentCostume:0,costumes:[costumeModel(name,md5ext)],sounds:[],volume:100,layerOrder:1,visible:true,x:0,y:0,size:100,direction:90,draggable:false,rotationStyle:"all around"};
           const before=(vm.runtime.targets||[]).map(t=>t.id);
           const id=await vm.addSprite(JSON.stringify(spriteObj));
-          let tgt=(vm.runtime.targets||[]).find(t=>t.id===id) || await waitForNewSprite(vm,before,1500);
+          let tgt=(vm.runtime.targets||[]).find(t=>t.id===id) || await waitForNewSprite(vm,before,1800);
           if(!tgt) throw new Error('addSprite created but target not found');
-          // ensure skin and thumbnail
-          if(!tgt.sprite.costumes) tgt.sprite.costumes=[];
           tgt.sprite.costumes[0]=costumeModel(name, md5ext);
           tgt.setCostume(0);
           await applySkin(vm,tgt,asset);
@@ -318,7 +306,6 @@
         }catch(e){ __sascTag('sprite','vm.addSprite failed: '+(e&&e.message||e)); }
       }
 
-      // fallback: duplicate
       const sprites=(vm.runtime.targets||[]).filter(t=>!t.isStage);
       if(sprites.length && typeof vm.duplicateSprite==='function'){
         const before=(vm.runtime.targets||[]).map(t=>t.id);
@@ -351,12 +338,19 @@
     }
   </script>
 
-  <!-- Internal Library Picker (fetch Scratch libraries from unpkg; inject into current VM) -->
+  <!-- CORS-safe internal library picker -->
   <script>
     (function(){
-      const LIB_URLS = {
-        sprites:  'https://unpkg.com/scratch-gui@0.1.0-prerelease.20220330154643/dist/static/asset-library/sprites.json',
-        backdrops:'https://unpkg.com/scratch-gui@0.1.0-prerelease.20220330154643/dist/static/asset-library/backdrops.json'
+      // Local-first + jsDelivr fallback (unpkg blocked CORS for you)
+      const LIB_SOURCES = {
+        sprites: [
+          location.pathname.replace(/\/[^/]*$/,'/') + 'static/library/sprites.json',
+          'https://cdn.jsdelivr.net/npm/scratch-gui@0.1.0-prerelease.20220330154643/dist/static/asset-library/sprites.json'
+        ],
+        backdrops: [
+          location.pathname.replace(/\/[^/]*$/,'/') + 'static/library/backdrops.json',
+          'https://cdn.jsdelivr.net/npm/scratch-gui@0.1.0-prerelease.20220330154643/dist/static/asset-library/backdrops.json'
+        ]
       };
       function ensureModal(){
         let modal=document.getElementById('sasc-modal');
@@ -376,11 +370,12 @@
         modal.addEventListener('click',e=>{ if(e.target===modal) modal.classList.remove('open'); });
         return modal;
       }
-      async function fetchLibrary(kind){
-        const url = LIB_URLS[kind];
-        const r = await fetch(url,{cache:'no-store'});
-        if(!r.ok) throw new Error('lib '+kind+' '+r.status);
-        return r.json();
+      async function fetchFirstOk(urls){
+        for(const u of urls){
+          try{ const r=await fetch(u,{cache:'no-store'}); if(r.ok) return r.json(); }
+          catch(_){ /* continue */ }
+        }
+        throw new Error('all sources failed');
       }
       function thumbUrl(md5ext){ return 'https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/'; }
 
@@ -393,15 +388,19 @@
 
         let items=[];
         try{
-          items = await fetchLibrary(kind);
+          items = await fetchFirstOk(LIB_SOURCES[kind]);
         }catch(e){
           __sascTag('ui','library fetch failed: '+(e&&e.message||e));
-          // tiny fallback
+          // minimal fallback to keep picker useful
           items = kind==='sprites' ? [
             {name:'Apple', md5ext:'3826a4091a33e4d26f87a2fac7cf796b.svg'}
           ] : [
             {name:'Blue Sky', md5ext:'e7c147730f19d284bcd7b3f00af19bb6.svg'}
           ];
+        }
+
+        function extractMd5(it){
+          return it.md5ext || (it.costumes && it.costumes[0] && it.costumes[0].md5ext) || (it.backdrop && it.backdrop.md5ext) || '';
         }
 
         function render(filter=''){
@@ -411,7 +410,7 @@
             const name=(it.name||it.nameLocale||'').toLowerCase();
             return !q || name.includes(q);
           }).forEach(it=>{
-            const md5ext = (it.md5ext || (it.costumes&&it.costumes[0]&&it.costumes[0].md5ext) || (it.backdrop&&it.backdrop.md5ext) || '');
+            const md5ext = extractMd5(it);
             if(!md5ext) return;
             const card=document.createElement('div'); card.className='sasc-card';
             card.innerHTML=`<img loading="lazy" src="${thumbUrl(md5ext)}"/><div class="label">${it.name||it.nameLocale||'Item'}</div>`;
@@ -434,11 +433,11 @@
         render();
       }
 
-      // Wire SASC buttons to open internal picker
+      // Wire buttons
       document.getElementById('btn-lib-sprite').onclick = ()=>openPicker('sprites');
       document.getElementById('btn-lib-backdrop').onclick = ()=>openPicker('backdrops');
 
-      // Costume/Sound library buttons: leave as best-effort openers for now
+      // Costume/Sound: best-effort open native GUI modals
       function clickByAria(text){ const n=[...document.querySelectorAll('[aria-label]')].find(e=>(e.getAttribute('aria-label')||'').toLowerCase().includes(text)); if(n){n.click(); return true;} return false; }
       function clickByTitle(text){ const n=[...document.querySelectorAll('[title]')].find(e=>(e.getAttribute('title')||'').toLowerCase().includes(text)); if(n){n.click(); return true;} return false; }
       function clickByText(text){
@@ -450,13 +449,9 @@
       document.getElementById('btn-lib-costume').onclick=()=>{ if (clickByAria('choose a costume')||clickByTitle('costume')||clickByText('choose a costume')) __sascTag('ui','opened Costume Library via aria/text'); else __sascTag('ui','Costume Library button not found'); };
       document.getElementById('btn-lib-sound').onclick=()=>{ if (clickByAria('choose a sound')||clickByTitle('sound')||clickByText('choose a sound')) __sascTag('ui','opened Sound Library via aria/text'); else __sascTag('ui','Sound Library button not found'); };
 
-      // A/B/C buttons (kept; now they reuse our internal functions)
-      document.getElementById('btn-apple-a').onclick=async()=>{
-        try{ const asset=await fetchAsset('3826a4091a33e4d26f87a2fac7cf796b.svg'); await createSpriteWithAsset('Apple (A)', asset); __sascTag('appleA','sprite added');}catch(e){__sascTag('appleA','failed: '+(e&&e.message||e));}
-      };
-      document.getElementById('btn-apple-b').onclick=async()=>{
-        try{ const asset=await fetchAsset('3826a4091a33e4d26f87a2fac7cf796b.svg'); await createSpriteWithAsset('Apple (B)', asset); __sascTag('appleB','sprite added');}catch(e){__sascTag('appleB','failed: '+(e&&e.message||e));}
-      };
+      // A/B/C demo buttons (use same injectors)
+      document.getElementById('btn-apple-a').onclick=async()=>{ try{ const a=await fetchAsset('3826a4091a33e4d26f87a2fac7cf796b.svg'); await createSpriteWithAsset('Apple (A)', a); __sascTag('appleA','sprite added'); }catch(e){ __sascTag('appleA','failed: '+(e&&e.message||e)); } };
+      document.getElementById('btn-apple-b').onclick=async()=>{ try{ const a=await fetchAsset('3826a4091a33e4d26f87a2fac7cf796b.svg'); await createSpriteWithAsset('Apple (B)', a); __sascTag('appleB','sprite added'); }catch(e){ __sascTag('appleB','failed: '+(e&&e.message||e)); } };
       document.getElementById('btn-apple-c').onclick=()=>{
         const inp=document.getElementById('file-image'); inp.value='';
         inp.onchange=async()=>{ const f=inp.files&&inp.files[0]; if(!f) return;
@@ -466,12 +461,8 @@
         }; inp.click();
       };
 
-      document.getElementById('btn-bg-a').onclick=async()=>{
-        try{ const asset=await fetchAsset('e7c147730f19d284bcd7b3f00af19bb6.svg'); await addBackdropAsset('Blue Sky (A)', asset); __sascTag('backdrop','added A'); }catch(e){ __sascTag('backdrop','A failed: '+(e&&e.message||e)); }
-      };
-      document.getElementById('btn-bg-b').onclick=async()=>{
-        try{ const asset=await fetchAsset('e7c147730f19d284bcd7b3f00af19bb6.svg'); await addBackdropAsset('Blue Sky (B)', asset); __sascTag('backdrop','added B'); }catch(e){ __sascTag('backdrop','B failed: '+(e&&e.message||e)); }
-      };
+      document.getElementById('btn-bg-a').onclick=async()=>{ try{ const a=await fetchAsset('e7c147730f19d284bcd7b3f00af19bb6.svg'); await addBackdropAsset('Blue Sky (A)', a); __sascTag('backdrop','added A'); }catch(e){ __sascTag('backdrop','A failed: '+(e&&e.message||e)); } };
+      document.getElementById('btn-bg-b').onclick=async()=>{ try{ const a=await fetchAsset('e7c147730f19d284bcd7b3f00af19bb6.svg'); await addBackdropAsset('Blue Sky (B)', a); __sascTag('backdrop','added B'); }catch(e){ __sascTag('backdrop','B failed: '+(e&&e.message||e)); } };
       document.getElementById('btn-bg-c').onclick=()=>{
         const inp=document.getElementById('file-image'); inp.value='';
         inp.onchange=async()=>{ const f=inp.files&&inp.files[0]; if(!f) return;
@@ -481,7 +472,7 @@
         }; inp.click();
       };
 
-      // Sound buttons: route to GUI (this VM build blocks programmatic sound adds)
+      // Sounds still route to GUI (VM build blocks direct sound adds)
       document.getElementById('btn-snd-a').onclick=()=>{ if (!(clickByAria('choose a sound')||clickByTitle('sound')||clickByText('choose a sound'))) __sascTag('ui','Sound Library button not found'); };
       document.getElementById('btn-snd-b').onclick=()=>{ __sascTag('sound','programmatic sound add is restricted; opening library'); if (!(clickByAria('choose a sound')||clickByTitle('sound')||clickByText('choose a sound'))) __sascTag('ui','Sound Library button not found'); };
       document.getElementById('btn-snd-c').onclick=()=>{ __sascTag('sound','Use the Sound Library or Sounds tab; direct file adds are restricted in this build'); if (!(clickByAria('choose a sound')||clickByTitle('sound')||clickByText('choose a sound'))) __sascTag('ui','Sound Library button not found'); };
