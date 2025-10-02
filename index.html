@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (vm-zip-inject)</title>
+  <title>SASC Scratch Editor — index (vm-zip-inject v2)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -17,7 +17,6 @@
     #sasc-console .btnrow{display:flex;gap:6px;flex-wrap:wrap}
   </style>
 
-  <!-- CSS loader; if manifest 404s, we rely on shim -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -40,7 +39,6 @@
   })();
   </script>
 
-  <!-- Shim that keeps modal/tiles clickable and fixes stacking -->
   <style id="sasc-css-shim">
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blocks"],[class*="blockly"]{min-width:280px;flex:1 1 50%}
@@ -57,7 +55,6 @@
 <body>
   <div id="app"></div>
 
-  <!-- SASC console -->
   <div id="sasc-console">
     <header>
       <strong>SASC</strong>
@@ -84,7 +81,6 @@
     })();
   </script>
 
-  <!-- React UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
@@ -101,10 +97,9 @@
     })();
   </script>
 
-  <!-- FETCH-only asset hook (no XHR patch) + diagnostics -->
   <script>
   (function(){
-    const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
+    const base = location.pathname.replace(/\/[^/]*$/, '/');
     const repoRoot = base.replace(/\/$/, '');
     const toLocalAsset = (u) => {
       const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);
@@ -132,13 +127,9 @@
   })();
   </script>
 
-  <!-- GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-index"></script>
-
-  <!-- JSZip for sprite3 creation -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous"></script>
 
-  <!-- Boot + VM finder + sprite3 injectors -->
   <script>
   (function boot(){
     const log = m => (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
@@ -194,7 +185,6 @@
       }
     } catch (e) { (window.__sascLog||console.error)('BOOT ERROR: ' + (e && e.stack || e)); return; }
 
-    // Poll for VM
     let waited = 0;
     const tick = setInterval(() => {
       const vm = exposeVM();
@@ -202,7 +192,13 @@
       else if ((waited += 500) > 30000) { log('[doctor] VM not found after 30s'); clearInterval(tick); }
     }, 500);
 
-    // Diagnostic helpers
+    function listTargets(){
+      const vm = window.vm || null;
+      if (!vm || !vm.runtime) { log('[targets] VM not ready'); return; }
+      const names = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ')+ (t.getName?t.getName():t.sprite && t.sprite.name || '(unnamed)'));
+      log('[targets] '+names.length+' targets\n- ' + names.join('\n- '));
+    }
+
     async function testAsset(md5ext){
       const base = location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, '');
       const local = base + '/static/assets/' + md5ext;
@@ -211,19 +207,25 @@
       try{ const r = await fetch(cdn,{cache:'no-store'}); log('[test asset] cdn   '+md5ext+' → '+r.status); }catch(e){ log('[test asset] cdn error '+md5ext+' → '+e); }
     }
     async function testLibraries(){
-      try{ const r1=await fetch('libraries/sprites.json',{cache:'no-store'}); log('[libs] sprites.json → '+r1.status);
-            const r2=await fetch('libraries/backdrops.json',{cache:'no-store'}); log('[libs] backdrops.json → '+r2.status);
+      try{
+        const [a,b] = await Promise.all([
+          fetch('libraries/sprites.json',{cache:'no-store'}),
+          fetch('libraries/backdrops.json',{cache:'no-store'})
+        ]);
+        log('[libs] sprites.json → '+a.status);
+        log('[libs] backdrops.json → '+b.status);
       }catch(e){ log('[libs] error: '+e); }
     }
-    function listTargets(){
-      const vm = window.vm || null;
-      if (!vm || !vm.runtime) { log('[targets] VM not ready'); return; }
-      const names = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ')+ (t.getName?t.getName():t.sprite && t.sprite.name || '(unnamed)'));
-      log('[targets] '+names.length+' targets\n- ' + names.join('\n- '));
-    }
 
-    // Build a minimal sprite.json structure for a single-costume sprite
+    // ---- sprite3 builder ----
+    function parseAsset(md5ext){
+      const m = String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i);
+      return m ? {assetId:m[1], ext:m[2].toLowerCase()} : null;
+    }
     function makeSpriteJSON(name, md5ext){
+      const p = parseAsset(md5ext);
+      const dataFormat = (p && p.ext==='svg') ? 'svg' : (p?p.ext:'png');
+      const assetId = p ? p.assetId : '';
       return {
         name,
         isStage: false,
@@ -235,8 +237,9 @@
         currentCostume: 0,
         costumes: [{
           name,
+          assetId,           // REQUIRED in many builds
           md5ext,
-          dataFormat: md5ext.toLowerCase().endsWith('.svg') ? 'svg' : 'png',
+          dataFormat,
           rotationCenterX: 0,
           rotationCenterY: 0
         }],
@@ -248,45 +251,47 @@
         rotationStyle: "all around"
       };
     }
-
-    // Create a .sprite3 zip in-browser and feed it to vm.addSprite
     async function addSpriteViaZip(spriteName, md5ext){
       try{
         const vm = window.vm;
-        if (!vm || !vm.addSprite) throw new Error('vm.addSprite not available');
+        if (!vm) throw new Error('vm missing');
+        log('[inject] vm.addSprite typeof = ' + (typeof vm.addSprite));
+        if (typeof vm.addSprite !== 'function') throw new Error('vm.addSprite not available');
 
-        // fetch the actual asset so zip contains the costume payload file
+        // fetch asset file to include inside the zip
         const assetURL = 'static/assets/' + md5ext;
         const resp = await fetch(assetURL, {cache:'no-store'});
         if (!resp.ok) throw new Error('asset fetch ' + resp.status + ' for ' + md5ext);
         const assetBuf = await resp.arrayBuffer();
 
+        // build sprite.json
         const spriteJSON = makeSpriteJSON(spriteName, md5ext);
+
+        // zip as ARRAYBUFFER (more compatible than Uint8Array)
         const zip = new JSZip();
         zip.file('sprite.json', JSON.stringify(spriteJSON, null, 2));
-        zip.file(md5ext, assetBuf); // include costume payload with exact md5.ext filename
+        zip.file(md5ext, assetBuf); // exact md5.ext filename in root
+        const arrBuf = await zip.generateAsync({type:'arraybuffer', compression:'STORE'});
 
-        const u8 = await zip.generateAsync({type:'uint8array', compression:'STORE'});
-        await vm.addSprite(u8);
-        log('[inject] sprite added via vm.addSprite: ' + spriteName + ' ('+md5ext+')');
+        // feed to VM
+        const result = await vm.addSprite(arrBuf);
+        log('[inject] sprite added via vm.addSprite: ' + spriteName + ' ('+md5ext+') → ' + JSON.stringify(result||{}));
         listTargets();
       } catch(e){
-        log('[inject] failed to add sprite "'+spriteName+'": '+(e && e.message));
+        log('[inject] failed to add sprite "'+spriteName+'": ' + (e && (e.stack || e.message || e)));
       }
     }
 
     // Wire buttons
-    document.getElementById('btn-scan-vm').onclick = exposeVM;
+    document.getElementById('btn-scan-vm').onclick = () => { exposeVM(); };
     document.getElementById('btn-list-targets').onclick = listTargets;
     document.getElementById('btn-test-apple').onclick = () => testAsset('3826a4091a33e4d26f87a2fac7cf796b.svg');
     document.getElementById('btn-test-sky').onclick = () => testAsset('e7c147730f19d284bcd7b3f00af19bb6.svg');
     document.getElementById('btn-libs').onclick = testLibraries;
-
     document.getElementById('btn-add-apple-zip').onclick = () =>
       addSpriteViaZip('Apple', '3826a4091a33e4d26f87a2fac7cf796b.svg');
-
     document.getElementById('btn-add-sky-zip').onclick = () =>
-      addSpriteViaZip('Blue Sky', 'e7c147730f19d284bcd7b3f00af19bb6.svg'); // as a sprite (backdrop fallback)
+      addSpriteViaZip('Blue Sky', 'e7c147730f19d284bcd7b3f00af19bb6.svg');
   })();
   </script>
 </body>
