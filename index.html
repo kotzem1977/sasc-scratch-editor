@@ -11,14 +11,14 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
     /* SASC console */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:420px;max-height:52vh;background:#0b0e;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     /* clearer light theme */
     #sasc-console[data-theme="light"]{background:#fff;color:#111;border-color:#89a}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console[data-theme="light"] header{background:#f4f7ff;border-bottom-color:#89a}
     #sasc-console header strong{margin-right:auto}
-    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px)}
+    #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(52vh - 44px); user-select:text}
     #sasc-console button{all:unset;cursor:pointer;color:inherit;padding:2px 6px;border:1px solid currentColor;border-radius:6px}
     #sasc-console .btnrow button{margin-left:4px}
 
@@ -42,6 +42,8 @@
       <strong>SASC</strong>
       <button id="btn-clear">Clear</button>
       <button id="btn-contrast">Contrast</button>
+      <button id="btn-copy">Copy Log</button>
+      <button id="btn-save">Save Log</button>
       <span class="btnrow">
         <button id="btn-bind">Bind VM</button>
         <button id="btn-targets">List Targets</button>
@@ -65,6 +67,28 @@
       window.__sascTag=(t,m)=>out(t,m);
       document.getElementById('btn-clear').onclick=()=>{ pre.textContent='SASC clear\n'; };
       document.getElementById('btn-contrast').onclick=()=>{ box.toggleAttribute('data-theme','light'); };
+      document.getElementById('btn-copy').onclick=async()=>{
+        try{
+          await navigator.clipboard.writeText(pre.textContent);
+          out('SASC','log copied to clipboard');
+        }catch(_){
+          // Fallback: select and execCommand
+          const r=document.createRange(); r.selectNodeContents(pre);
+          const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+          const ok=document.execCommand('copy');
+          s.removeAllRanges();
+          out('SASC', ok?'log copied (fallback)':'copy failed');
+        }
+      };
+      document.getElementById('btn-save').onclick=()=>{
+        const blob=new Blob([pre.textContent],{type:'text/plain'});
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download='sasc-log.txt';
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+        out('SASC','log saved as sasc-log.txt');
+      };
       window.addEventListener('click',e=>out('Click',e.target.tagName));
       window.addEventListener('unhandledrejection',e=>out('unhandledrejection',(e.reason&&(e.reason.stack||e.reason))));
     })();
@@ -108,7 +132,7 @@
     })();
   </script>
 
-  <!-- 4) Your GUI bundle (bump query to bust cache if needed) -->
+  <!-- 4) Your GUI bundle -->
   <script src="scratch-gui.js?v=finder-003"></script>
 
   <!-- 5) Mount the GUI -->
@@ -325,7 +349,7 @@
       throw new Error('No sprite creation path available in this build');
     }
 
-    /* ---------- costume (manual path preferred for your build) ---------- */
+    /* ---------- costume (manual path preferred) ---------- */
     async function addCostumeToSelected(name, md5ext){
       const vm = window.vm || await bindVM(6000), GUI = window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -347,7 +371,7 @@
       __sascTag('costume','success via manual injection');
     }
 
-    /* ---------- backdrop (force manual so it always shows) ---------- */
+    /* ---------- backdrop (manual so it always shows) ---------- */
     async function addBackdropSmart(name, md5ext){
       const vm = window.vm || await bindVM(6000);
       if(!vm?.runtime) throw new Error('vm missing');
@@ -359,7 +383,7 @@
       __sascTag('backdrop','success via manual stage injection');
     }
 
-    /* ---------- sounds (unsupported VM helper on this build) ---------- */
+    /* ---------- sounds (GUI path only) ---------- */
     async function addSoundToSelected(name, md5ext){
       const vm=window.vm || await bindVM(6000), GUI=window.GUI;
       if(!vm?.runtime) throw new Error('vm missing');
@@ -391,7 +415,8 @@
       addCostumeToSelected('Costume '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add costume failed: '+(e&&e.message||e)));
     };
     document.getElementById('btn-sound').onclick=()=>{
-      const md5ext=prompt('Sound md5.ext (wav/mp3):','0b1e3033140d094563248e61de4039e5.wav'); if(!md5ext) return;
+      // Use the built-in Meow sound to avoid 404s on GitHub Pages
+      const md5ext=prompt('Sound md5.ext (wav/mp3):','83c36d806dc92327b9e7049a565c6bff.wav'); if(!md5ext) return;
       addSoundToSelected('Sound '+md5ext.slice(0,6), md5ext.trim()).catch(e=>__sascTag('tools','add sound failed: '+(e&&e.message||e)));
     };
 
