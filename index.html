@@ -15,11 +15,10 @@
   <!-- 🔧 Critical: alias globals BEFORE loading scratch-gui.js -->
   <script>
     (function(){
-      if (window.React && !window.react) { window.react = window.React; }
-      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; }
-      if (window.Redux && !window.redux) { window.redux = window.Redux; }
-      // Small log so we can see this ran even before SASC console
-      try { console.log('[BOOT] aliases pre-GUI set'); } catch(_) {}
+      if (window.React && !window.react) window.react = window.React;
+      if (window.ReactDOM && !window['react-dom']) window['react-dom'] = window.ReactDOM;
+      if (window.Redux && !window.redux) window.redux = window.Redux;
+      console.log('[BOOT] aliases pre-GUI set');
     })();
   </script>
 </head>
@@ -85,7 +84,8 @@
 
   <!-- Core helpers & actions -->
   <script src="./asset-helpers.js?v=1"></script>
-  <script src="./actions.js?v=2"></script>
+  <script src="./inline-assets.js?v=1"></script> <!-- ✅ NEW -->
+  <script src="./actions.js?v=3"></script>       <!-- ✅ UPDATED -->
 
   <!-- UI wiring (buttons + library openers) -->
   <script src="./ui-wiring.js?v=2"></script>
