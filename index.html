@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (diag+shim)</title>
+  <title>SASC Scratch Editor — index (diag+shim+library-fix)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -11,14 +11,14 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
     /* SASC console overlay */
     #sasc-console{position:fixed;left:10px;bottom:10px;width:340px;max-height:55vh;background:#111a;backdrop-filter:blur(2px);
-      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
+      color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:9999}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;justify-content:space-between;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console pre{margin:0;padding:6px 8px;white-space:pre-wrap;overflow:auto;max-height:calc(55vh - 70px)}
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
     #sasc-console .btnrow{display:flex;gap:6px;flex-wrap:wrap}
   </style>
 
-  <!-- CSS loader: we rely on the shim if the demo manifest 404s -->
+  <!-- CSS loader: use demo manifest if it exists; otherwise rely on shim -->
   <script>
   (function loadScratchGuiCSS(){
     var ORIGIN='https://scratchfoundation.github.io', BASE=ORIGIN+'/scratch-gui';
@@ -41,24 +41,29 @@
   })();
   </script>
 
-  <!-- Minimal CSS shim so layout is sane without real CSS -->
+  <!-- Strong shim so the modal & tiles are fully interactive -->
   <style id="sasc-css-shim">
-    /* Stage / controls stacking */
-    [class*="stage-wrapper"]{position:relative;z-index:0}
+    /* editor columns */
+    [class*="gui-body"]{display:flex;min-height:100vh}
+    [class*="blocks"],[class*="blockly"]{min-width:280px;flex:1 1 50%}
+    [class*="target-pane"]{min-width:240px;flex:0 0 240px}
+    [class*="stage-wrapper"]{flex:0 0 auto;position:relative;z-index:0}
     [class*="stage-header"]{position:relative;z-index:2}
     [class*="green-flag"],[class*="stop-all"]{position:relative;z-index:3}
     canvas{cursor:default}
 
-    /* Basic editor columns */
-    [class*="gui-body"]{display:flex;min-height:100vh}
-    [class*="blocks"],[class*="blockly"]{min-width:280px;flex:1 1 50%}
-    [class*="target-pane"]{min-width:240px;flex:0 0 240px}
-    [class*="stage-wrapper"]{flex:0 0 auto}
-
-    /* Library modal above stage */
-    [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
-    [class*="sprite-selector"] img{display:block}
-    [class*="sprite-selector_add-button"],[class*="stage-selector_add-button"]{pointer-events:auto}
+    /* modal layer above all */
+    [class*="react-modal"], [class*="modal-content"], [class*="modal-overlay"]{
+      position:relative; z-index:10000;
+    }
+    /* library grid tiles must be clickable */
+    [class*="library-item"], [class*="library-item"] * {
+      pointer-events:auto !important; cursor:pointer;
+    }
+    /* ensure sprite/backdrop add buttons clickable */
+    [class*="sprite-selector_add-button"], [class*="stage-selector_add-button"]{
+      pointer-events:auto;
+    }
   </style>
 </head>
 <body>
@@ -75,6 +80,8 @@
         <button id="btn-test-apple">Test Apple asset</button>
         <button id="btn-test-sky">Test Sky asset</button>
         <button id="btn-libs">Test libraries</button>
+        <button id="btn-add-sky-gui">Add Blue Sky (GUI)</button>
+        <button id="btn-add-apple-as-backdrop">Add Apple (SVG as backdrop)</button>
       </div>
     </header>
     <pre>SASC clear
@@ -105,7 +112,7 @@
     })();
   </script>
 
-  <!-- Local-first asset hooks: FETCH ONLY (no XHR patch) + diag logging -->
+  <!-- FETCH-only asset hook + diagnostics (NO XHR patch) -->
   <script>
   (function(){
     const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
@@ -114,7 +121,6 @@
       const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);
       return m ? (repoRoot + '/static/assets/' + m[1]) : null;
     };
-
     const f = window.fetch;
     window.fetch = async function(input, init){
       const url = (typeof input === 'string') ? input : (input && input.url);
@@ -133,7 +139,6 @@
       }
       return r2;
     };
-
     console.log('[hooks] installed (assets local-first; **no XHR patch**)');
   })();
   </script>
@@ -141,12 +146,11 @@
   <!-- Your GUI bundle -->
   <script src="scratch-gui.js?v=stable-boot-clean-index"></script>
 
-  <!-- Mount GUI + safe VM “fiber finder” and multi-tests -->
+  <!-- Mount GUI + safe VM “fiber finder” and helpers -->
   <script>
   (function boot(){
     const log = m => (window.__sascLog ? __sascLog(m) : console.log('[SASC]', m));
 
-    // -------- Fiber spelunk to find VM without touching Redux/XHR ----------
     function findVMViaFiber(){
       try{
         const app = document.getElementById('app');
@@ -159,14 +163,11 @@
           const n = stack.pop();
           if (!n || seen.has(n)) continue;
           seen.add(n);
-          // check memoizedProps or stateNode props
           const cands = [];
           if (n.memoizedProps) cands.push(n.memoizedProps);
           if (n.stateNode && n.stateNode.props) cands.push(n.stateNode.props);
           for (const p of cands){
-            if (p && p.vm && p.vm.runtime && typeof p.vm.greenFlag === 'function'){
-              found = p.vm; break;
-            }
+            if (p && p.vm && p.vm.runtime && typeof p.vm.greenFlag === 'function'){ found = p.vm; break; }
           }
           if (found) break;
           if (n.child) stack.push(n.child);
@@ -187,7 +188,7 @@
       return null;
     }
 
-    // -------- GUI mount --------
+    // Mount GUI
     try {
       const app = document.getElementById('app');
       const GUI = window.GUI;
@@ -212,44 +213,75 @@
       return;
     }
 
-    // -------- Passive VM wait (without touching Redux) --------
+    // Passive VM wait
     let waited = 0;
     const tick = setInterval(() => {
       const vm = exposeVM();
       if (vm) { clearInterval(tick); }
-      else if ((waited += 500) > 30000) {
-        log('[doctor] VM not found after 30s');
-        clearInterval(tick);
-      }
+      else if ((waited += 500) > 30000) { log('[doctor] VM not found after 30s'); clearInterval(tick); }
     }, 500);
 
-    // -------- Test helpers (no breaking changes) --------
+    // Helpers
     async function testAsset(md5ext){
       const base = location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, '');
       const local = base + '/static/assets/' + md5ext;
       const cdn   = 'https://assets.scratch.mit.edu/internalapi/asset/' + md5ext + '/get/';
-      try {
-        const rLocal = await fetch(local, {cache:'no-store'});
-        log('[test asset] local '+md5ext+' → ' + rLocal.status);
-      } catch(e){ log('[test asset] local error '+md5ext+' → ' + e); }
-      try {
-        const rCDN = await fetch(cdn, {cache:'no-store'});
-        log('[test asset] cdn   '+md5ext+' → ' + rCDN.status);
-      } catch(e){ log('[test asset] cdn error '+md5ext+' → ' + e); }
+      try{ const r = await fetch(local,{cache:'no-store'}); log('[test asset] local '+md5ext+' → '+r.status); }catch(e){ log('[test asset] local error '+md5ext+' → '+e); }
+      try{ const r = await fetch(cdn,{cache:'no-store'}); log('[test asset] cdn   '+md5ext+' → '+r.status); }catch(e){ log('[test asset] cdn error '+md5ext+' → '+e); }
     }
-
     async function testLibraries(){
-      try{
-        const r1 = await fetch('libraries/sprites.json', {cache:'no-store'}); log('[libs] sprites.json → '+r1.status);
-        const r2 = await fetch('libraries/backdrops.json', {cache:'no-store'}); log('[libs] backdrops.json → '+r2.status);
+      try{ const r1=await fetch('libraries/sprites.json',{cache:'no-store'}); log('[libs] sprites.json → '+r1.status);
+            const r2=await fetch('libraries/backdrops.json',{cache:'no-store'}); log('[libs] backdrops.json → '+r2.status);
       }catch(e){ log('[libs] error: '+e); }
     }
-
     function listTargets(){
       const vm = window.vm || null;
       if (!vm || !vm.runtime) { log('[targets] VM not ready'); return; }
       const names = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ')+ (t.getName?t.getName():t.sprite && t.sprite.name || '(unnamed)'));
       log('[targets] '+names.length+' targets\n- ' + names.join('\n- '));
+    }
+
+    // Add backdrop via GUI (preferred path)
+    async function addBackdropGUI(md5ext){
+      try{
+        const url = 'static/assets/'+md5ext;
+        const r = await fetch(url,{cache:'no-store'});
+        if(!r.ok) throw new Error('fetch '+r.status);
+        const ct = r.headers.get('content-type') || (md5ext.endsWith('.svg')?'image/svg+xml':'image/png');
+        const blob = await r.blob();
+        const GUI = window.GUI;
+        if (GUI && typeof GUI.handleBackdropUpload === 'function'){
+          await GUI.handleBackdropUpload(blob, ct);
+          log('[tools] backdrop added via GUI: '+md5ext);
+          listTargets();
+        } else {
+          throw new Error('GUI.handleBackdropUpload not available');
+        }
+      } catch(e){
+        log('[tools] add backdrop via GUI failed: '+(e && e.message));
+      }
+    }
+
+    // Fallback: import SVG as a stage backdrop directly (best-effort)
+    async function addBackdropDirect(md5ext,name){
+      try{
+        const url = 'static/assets/'+md5ext;
+        const r = await fetch(url,{cache:'no-store'});
+        if(!r.ok) throw new Error('fetch '+r.status);
+        const blob = await r.blob();
+        const vm = window.vm; if(!vm||!vm.runtime) throw new Error('vm missing');
+        const stage = vm.runtime.getTargetForStage(); if(!stage) throw new Error('no stage target');
+        // VM has an internal helper importSpriteCostume; try it for stage
+        if (typeof vm.importSpriteCostume === 'function'){
+          await vm.importSpriteCostume(blob,{name:name||md5ext,targetId:stage.id});
+          log('[tools] backdrop added via vm.importSpriteCostume: '+md5ext);
+          listTargets();
+          return;
+        }
+        throw new Error('vm.importSpriteCostume not available');
+      } catch(e){
+        log('[tools] add backdrop (direct) failed: '+(e && e.message));
+      }
     }
 
     // Wire buttons
@@ -258,6 +290,19 @@
     document.getElementById('btn-test-apple').onclick = () => testAsset('3826a4091a33e4d26f87a2fac7cf796b.svg');
     document.getElementById('btn-test-sky').onclick = () => testAsset('e7c147730f19d284bcd7b3f00af19bb6.svg');
     document.getElementById('btn-libs').onclick = testLibraries;
+
+    document.getElementById('btn-add-sky-gui').onclick = async () => {
+      // try GUI path first (SVG #1), if not available, direct import
+      await addBackdropGUI('e7c147730f19d284bcd7b3f00af19bb6.svg').catch(()=>{});
+      // If GUI helper missing, try direct:
+      await addBackdropDirect('e7c147730f19d284bcd7b3f00af19bb6.svg','Blue Sky').catch(()=>{});
+    };
+
+    document.getElementById('btn-add-apple-as-backdrop').onclick = async () => {
+      // Apple SVG as a stage backdrop (for verification path)
+      await addBackdropGUI('3826a4091a33e4d26f87a2fac7cf796b.svg').catch(()=>{});
+      await addBackdropDirect('3826a4091a33e4d26f87a2fac7cf796b.svg','Apple SVG').catch(()=>{});
+    };
   })();
   </script>
 </body>
