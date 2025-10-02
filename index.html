@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>SASC Scratch Editor — index (vm-binder-strong)</title>
+  <title>SASC Scratch Editor — index (vm-binder-deep)</title>
   <link rel="icon" href="./favicon.ico"/>
 
   <style>
@@ -11,7 +11,7 @@
     #app{display:flex;align-items:stretch;justify-content:stretch;background:#0b1120}
 
     /* SASC console */
-    #sasc-console{position:fixed;left:10px;bottom:10px;width:380px;max-height:55vh;background:#111a;backdrop-filter:blur(2px);
+    #sasc-console{position:fixed;left:10px;bottom:10px;width:400px;max-height:55vh;background:#111a;backdrop-filter:blur(2px);
       color:#0ff;font:12px/1.35 ui-monospace,Consolas,monospace;border:1px solid #044;border-radius:8px;z-index:99999}
     #sasc-console header{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;background:#022;border-bottom:1px solid #044;border-radius:8px 8px 0 0}
     #sasc-console header strong{margin-right:auto}
@@ -19,7 +19,7 @@
     #sasc-console button{all:unset;cursor:pointer;color:#0ff;padding:2px 6px;border:1px solid #044;border-radius:6px}
     #sasc-console button:hover{background:#033}
 
-    /* Minimal CSS shim so layout/z-index are sane without remote CSS */
+    /* Minimal layout shim */
     [class*="gui-body"]{display:flex;min-height:100vh}
     [class*="blockly"],[class*="blocks"]{min-width:280px;flex:1 1 50%}
     [class*="target-pane"]{min-width:240px;flex:0 0 240px}
@@ -30,92 +30,232 @@
     [class*="react-modal"],[class*="modal-content"]{z-index:9999;position:relative}
     [class*="sprite-selector"] img{display:block}
   </style>
+
+  <!-- SASC console bootstrap -->
+  <script>
+    (function(){
+      const preHTML = 'SASC clear\n';
+      const c = document.createElement('div');
+      c.id = 'sasc-console';
+      c.innerHTML = `
+        <header>
+          <strong>SASC</strong>
+          <button id="btn-clear">Clear</button>
+          <button id="btn-rebind">Force rebind VM</button>
+          <button id="btn-targets">List Targets</button>
+          <button id="btn-apple">+ Apple (sprite)</button>
+          <button id="btn-backdrop-sky">+ Blue Sky → Backdrop</button>
+        </header>
+        <pre>${preHTML}</pre>`;
+      document.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(c));
+      window.__sascLog = (m)=>{
+        try{
+          const pre = document.querySelector('#sasc-console pre');
+          pre.textContent += m+'\n';
+          pre.scrollTop = pre.scrollHeight;
+        }catch(_){}
+        console.log(m);
+      };
+      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
+      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
+      document.addEventListener('DOMContentLoaded', ()=>{
+        const pre = document.querySelector('#sasc-console pre');
+        document.getElementById('btn-clear').onclick = ()=>{ pre.textContent = 'SASC clear\n'; };
+      });
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
-
-  <!-- SASC console -->
-  <div id="sasc-console">
-    <header>
-      <strong>SASC</strong>
-      <button id="btn-clear">Clear</button>
-      <button id="btn-rebind">Force rebind VM</button>
-      <button id="btn-targets">List Targets</button>
-      <button id="btn-apple">+ Apple (one click)</button>
-      <button id="btn-backdrop-sky">+ Blue Sky → Backdrop</button>
-    </header>
-    <pre>SASC clear
-</pre>
-  </div>
-
-  <script>
-    (function(){
-      const pre = document.querySelector('#sasc-console pre');
-      document.getElementById('btn-clear').onclick = ()=>{ pre.textContent = 'SASC clear\n'; };
-      window.__sascLog = (m)=>{ try{ pre.textContent += m+'\n'; pre.scrollTop = pre.scrollHeight; }catch(_){} console.log(m); };
-      window.addEventListener('click', e => __sascLog('[Click] ' + e.target.tagName));
-      window.addEventListener('unhandledrejection', e => __sascLog('[unhandledrejection]: ' + (e.reason && (e.reason.stack || e.reason))));
-    })();
-  </script>
 
   <!-- React UMDs -->
   <script src="https://unpkg.com/react@16.14.0/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16.14.0/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/redux@4.2.1/dist/redux.min.js"></script>
-  <script>
-    (function(){
-      if (window.React && !window.react)      { window.react = window.React;      __sascLog('[SASC] react alias set');}
-      if (window.ReactDOM && !window['react-dom']) { window['react-dom'] = window.ReactDOM; __sascLog('[SASC] react-dom alias set');}
-      if (window.Redux && !window.redux)      { window.redux = window.Redux;      __sascLog('[SASC] redux alias set');}
-    })();
-  </script>
 
-  <!-- Local-first asset hooks with fallback -->
+  <!-- Local-first hooks -->
   <script>
   (function(){
     const base = location.pathname.replace(/\/[^/]*$/, '/'); // /<user>/<repo>/
     const repoRoot = base.replace(/\/$/, '');
-    const toLocalAsset = (u) => {
+    const toLocal = (u)=>{
       const m = u && u.match(/internalapi\/asset\/([a-f0-9]{32}\.(?:sprite3|json|svg|png|gif|jpg|wav|mp3))\/get\/?/i);
       return m ? (repoRoot + '/static/assets/' + m[1]) : null;
     };
 
     const f = window.fetch;
-    window.fetch = async function(input, init){
-      const url = (typeof input === 'string') ? input : (input && input.url);
-      const local = toLocalAsset(url);
+    window.fetch = async function(i,init){
+      const url = (typeof i==='string') ? i : (i && i.url);
+      const local = toLocal(url);
       if (local){
-        try {
+        try{
           const r = await f(local, init);
-          if (r && r.ok) { __sascLog('[hooks] fetch local OK → ' + local); return r; }
-          __sascLog('[hooks] fetch local ' + (r && r.status) + ' → fall back ' + url);
-        } catch (e){ __sascLog('[hooks] fetch local error → fall back ' + e); }
+          if (r && r.ok){ __sascLog('[hooks] fetch local OK → '+local); return r; }
+          __sascLog('[hooks] fetch local '+(r&&r.status)+' → fallback '+url);
+        }catch(e){ __sascLog('[hooks] fetch local error → fallback '+e); }
       }
       return f.apply(this, arguments);
     };
 
-    const XO = window.XMLHttpRequest;
+    const XO = XMLHttpRequest;
     window.XMLHttpRequest = function(){
-      const x = new XO();
-      let original=null, method='GET';
-      const _open = x.open;
-      x.open = function(m,u){
+      const x = new XO(); let original=null, method='GET';
+      const _open=x.open;
+      x.open=function(m,u){
         method=m; original=u;
-        const local = (typeof u === 'string') ? toLocalAsset(u) : null;
+        const local = (typeof u==='string') ? toLocal(u) : null;
         if (local){
           _open.call(x, m, local);
           const onload = function(){
-            if (x.status>=200 && x.status<300){ __sascLog('[hooks] xhr local OK → ' + local); }
-            else { __sascLog('[hooks] xhr local '+x.status+' → retry ORIGINAL ' + original); x.removeEventListener('load', onload); _open.call(x, method, original); x.send(); }
+            if (x.status>=200 && x.status<300){ __sascLog('[hooks] xhr local OK → '+local); }
+            else { __sascLog('[hooks] xhr local '+x.status+' → retry ORIGINAL '+original); x.removeEventListener('load', onload); _open.call(x, method, original); x.send(); }
           };
           x.addEventListener('load', onload);
           return;
         }
         return _open.apply(x, arguments);
       };
-      const _send = x.send; x.send = function(){ return _send.apply(x, arguments); };
+      const _send=x.send; x.send=function(){ return _send.apply(x, arguments); };
       __sascLog('[hooks] installed (assets local-first with XHR fallback)');
       return x;
+    };
+  })();
+  </script>
+
+  <!-- 🔧 Deep VM binder: capture Redux store + scan state -->
+  <script>
+  (function(){
+    // throttle helper
+    const now = ()=> (performance && performance.now ? performance.now() : Date.now());
+    const throttle = (fn, ms)=>{
+      let t=0, pend=false;
+      return function(){ const n=now(); if (n-t >= ms){ t=n; fn(); } else if (!pend){ pend=true; setTimeout(()=>{pend=false; t=now(); fn();}, ms-(n-t)); } };
+    };
+
+    let vmRef = null;
+    let storeRef = null;
+    let lastScan = 0;
+
+    function attachVM(vm, via){
+      if (!vm || !vm.runtime) return false;
+      vmRef = vm; window.vm = vmRef;
+      const n = (vm.runtime.targets && vm.runtime.targets.length) || 0;
+      __sascLog('[binder] VM attached via '+via+' (targets='+n+')');
+      return true;
+    }
+
+    // Passive polling of common locations
+    function discoverCommon(){
+      if (window.vm && window.vm.runtime) return attachVM(window.vm, 'window.vm');
+      const GUI = window.GUI;
+      if (GUI){
+        if (GUI.vm && GUI.vm.runtime && attachVM(GUI.vm, 'GUI.vm')) return true;
+        if (GUI.store && GUI.store.getState){
+          try{
+            const st = GUI.store.getState();
+            const vm = st && st.scratchGui && st.scratchGui.vm;
+            if (vm && vm.runtime && attachVM(vm, 'GUI.store.scratchGui.vm')) return true;
+          }catch(_){}
+        }
+      }
+      const SG = window.ScratchGUI;
+      if (SG){
+        if (SG.vm && SG.vm.runtime && attachVM(SG.vm, 'ScratchGUI.vm')) return true;
+        if (SG.store && SG.store.getState){
+          try{
+            const st = SG.store.getState();
+            const vm = st && st.scratchGui && st.scratchGui.vm;
+            if (vm && vm.runtime && attachVM(vm, 'ScratchGUI.store.scratchGui.vm')) return true;
+          }catch(_){}
+        }
+      }
+      return false;
+    }
+
+    // DFS scan to find an object that looks like VM
+    function looksLikeVM(x){
+      return x && typeof x==='object'
+        && x.runtime && typeof x.runtime==='object'
+        && Array.isArray(x.runtime.targets)
+        && typeof x.addSprite==='function';
+    }
+    function scanForVM(root, maxNodes=20000){
+      try{
+        const seen = new Set();
+        const stack = [root];
+        let count = 0;
+        while (stack.length && count<maxNodes){
+          const cur = stack.pop(); count++;
+          if (!cur || typeof cur!=='object') continue;
+          if (seen.has(cur)) continue;
+          seen.add(cur);
+
+          if (looksLikeVM(cur)) return cur;
+
+          for (const k in cur){
+            const v = cur[k];
+            if (v && typeof v==='object' && !seen.has(v)) stack.push(v);
+          }
+        }
+      }catch(e){ /* ignore */ }
+      return null;
+    }
+
+    // Hook Redux.createStore to capture the *actual* store created by scratch-gui
+    (function hookRedux(){
+      const R = window.Redux;
+      if (!R || typeof R.createStore!=='function'){ __sascLog('[binder] Redux not ready to hook'); return; }
+      const origCreateStore = R.createStore;
+      R.createStore = function(){
+        const store = origCreateStore.apply(this, arguments);
+        storeRef = store;
+        window.__SASC_STORE = store;
+        __sascLog('[binder] captured Redux store');
+        // Subscribe with throttled scanner
+        const scan = throttle(()=>{
+          if (vmRef && vmRef.runtime) return;
+          try{
+            const state = store.getState && store.getState();
+            const vm = scanForVM(state);
+            if (vm && attachVM(vm, 'redux-state-scan')) return;
+          }catch(e){/*ignore*/}
+        }, 200);
+        try{ store.subscribe(scan); scan(); }catch(_){}
+        return store;
+      };
+      __sascLog('[binder] Redux.createStore hooked');
+    })();
+
+    // Periodic attempts:
+    setInterval(()=>{
+      if (vmRef && vmRef.runtime) return;
+      if (discoverCommon()) return;
+      if (storeRef && storeRef.getState){
+        const t = now();
+        if (t - lastScan > 500){
+          lastScan = t;
+          try{
+            const state = storeRef.getState();
+            const vm = scanForVM(state);
+            if (vm) attachVM(vm, 'redux-state-scan/poll');
+          }catch(_){}
+        }
+      }else{
+        __sascLog('still waiting for VM…');
+      }
+    }, 400);
+
+    // Expose controls for later scripts
+    window.__SASC_BINDER = {
+      get vm(){ return vmRef; },
+      forceRebind: ()=>{
+        if (discoverCommon()) return true;
+        if (storeRef && storeRef.getState){
+          const vm = scanForVM(storeRef.getState());
+          if (vm && attachVM(vm,'redux-state-scan/manual')) return true;
+        }
+        __sascLog('rebind: VM not found in known paths'); return false;
+      }
     };
   })();
   </script>
@@ -149,153 +289,71 @@
   })();
   </script>
 
-  <!-- Strong VM binder + Apple/Backdrop tools -->
+  <!-- Tools (Apple sprite / Blue Sky backdrop) -->
   <script>
-  (function(){
+  (function tools(){
     const APPLE_SVG = '3826a4091a33e4d26f87a2fac7cf796b.svg';
     const SKY_SVG   = 'e7c147730f19d284bcd7b3f00af19bb6.svg';
 
-    let vmRef = null;
-
-    function getFromGUI(){
-      const GUI = window.GUI;
-      if (!GUI) return null;
-      if (GUI.vm && GUI.vm.runtime) return {vm:GUI.vm, via:'GUI.vm'};
-      if (GUI.store && GUI.store.getState){
-        try{
-          const st = GUI.store.getState();
-          const maybe = st && st.scratchGui && st.scratchGui.vm;
-          if (maybe && maybe.runtime) return {vm:maybe, via:'GUI.store.scratchGui.vm'};
-        }catch(_){}
-      }
-      return null;
-    }
-
-    function discoverVMOnce(){
-      if (window.vm && window.vm.runtime) return {vm:window.vm, via:'window.vm'};
-      const fromGUI = getFromGUI(); if (fromGUI) return fromGUI;
-      // Sometimes the UMD puts itself under window.ScratchGUI
-      const SG = window.ScratchGUI;
-      if (SG){
-        if (SG.vm && SG.vm.runtime) return {vm:SG.vm, via:'ScratchGUI.vm'};
-        if (SG.store && SG.store.getState){
-          try{
-            const st = SG.store.getState();
-            const maybe = st && st.scratchGui && st.scratchGui.vm;
-            if (maybe && maybe.runtime) return {vm:maybe, via:'ScratchGUI.store.scratchGui.vm'};
-          }catch(_){}
-        }
-      }
-      return null;
-    }
-
-    function attachVM(found){
-      if (!found) return false;
-      vmRef = found.vm;
-      window.vm = vmRef; // expose for convenience
-      const n = (vmRef.runtime.targets && vmRef.runtime.targets.length) || 0;
-      __sascLog('VM attached via ' + found.via + ' (targets=' + n + ')');
-      return true;
-    }
-
-    // 1) Keep polling forever (every 400ms) until we succeed
-    setInterval(()=>{
-      if (vmRef && vmRef.runtime) return;
-      const found = discoverVMOnce();
-      if (found) attachVM(found);
-      else __sascLog('still waiting for VM…');
-    }, 400);
-
-    // 2) Manual rebind button
-    document.getElementById('btn-rebind').onclick = ()=>{
-      const found = discoverVMOnce();
-      if (attachVM(found)) return;
-      __sascLog('rebind: VM not found in known paths');
-    };
-
-    // --- asset fetch helpers
     function repoBase(){ return location.pathname.replace(/\/[^/]*$/, '/').replace(/\/$/, ''); }
     function parseAsset(md5ext){ const m=String(md5ext||'').match(/^([a-f0-9]{32})\.(\w+)$/i); return m?{assetId:m[1],ext:m[2].toLowerCase()}:null; }
     async function fetchAsset(md5ext){
       const local = repoBase() + '/static/assets/' + md5ext;
-      try { const r = await fetch(local, {cache:'no-store'}); if (r.ok) { const arr = await r.arrayBuffer(); return makePayload(md5ext, arr); } }
-      catch(_){}
-      const cdn = 'https://assets.scratch.mit.edu/internalapi/asset/'+ md5ext +'/get/';
-      const r2 = await fetch(cdn, {cache:'no-store'}); if (!r2.ok) throw new Error('CDN fetch '+r2.status);
-      const arr = await r2.arrayBuffer(); return makePayload(md5ext, arr);
+      try{ const r=await fetch(local,{cache:'no-store'}); if(r.ok){ const arr=await r.arrayBuffer(); return {arr}; } }catch(_){}
+      const cdn='https://assets.scratch.mit.edu/internalapi/asset/'+md5ext+'/get/'; const r2=await fetch(cdn,{cache:'no-store'});
+      if(!r2.ok) throw new Error('CDN fetch '+r2.status); const arr=await r2.arrayBuffer(); return {arr};
     }
-    function makePayload(md5ext, arr){
-      const p = parseAsset(md5ext)||{ext:'svg'};
-      const mime = p.ext==='svg' ? 'image/svg+xml'
-                : p.ext==='png'||p.ext==='jpg'||p.ext==='jpeg'||p.ext==='gif' ? ('image/'+(p.ext==='jpg'?'jpeg':p.ext))
-                : p.ext==='wav'||p.ext==='mp3' ? ('audio/'+p.ext)
-                : 'application/octet-stream';
-      return { arrayBuffer: arr, blob: new Blob([arr], {type:mime}), mime };
-    }
-    function costumeObj(name, md5ext){
-      const p = parseAsset(md5ext)||{ext:'png',assetId:''};
-      return { name:name||('Costume '+md5ext.slice(0,6)), assetId:p.assetId, md5ext, dataFormat:(p.ext==='svg'?'svg':p.ext), rotationCenterX:240, rotationCenterY:180 };
-    }
+    function costumeObj(name, md5ext){ const p=parseAsset(md5ext)||{ext:'png',assetId:''};
+      return {name,assetId:p.assetId,md5ext,dataFormat:(p.ext==='svg'?'svg':p.ext),rotationCenterX:240,rotationCenterY:180}; }
     function stage(vm){ return vm && vm.runtime && vm.runtime.getTargetForStage ? vm.runtime.getTargetForStage() : null; }
 
-    // Apple via addSprite (known good)
+    const binder = ()=> (window.__SASC_BINDER && window.__SASC_BINDER.vm) || window.vm;
+
     async function addApple(){
-      const vm = vmRef && vmRef.runtime ? vmRef : (discoverVMOnce()||{}).vm;
-      if (!vm || !vm.addSprite) { __sascLog('[tools] vm not ready for addSprite'); return; }
-      try {
-        const asset = await fetchAsset(APPLE_SVG);
-        await vm.addSprite(new Uint8Array(asset.arrayBuffer));
-        __sascLog('[tools] Apple sprite added');
-      } catch(e){ __sascLog('[tools] Apple add failed: ' + (e && e.message || e)); }
+      const vm = binder();
+      if (!vm || !vm.addSprite){ __sascLog('[tools] vm not ready for addSprite'); return; }
+      try{ const {arr} = await fetchAsset(APPLE_SVG); await vm.addSprite(new Uint8Array(arr)); __sascLog('[tools] Apple sprite added'); }
+      catch(e){ __sascLog('[tools] Apple add failed: ' + (e && e.message || e)); }
     }
 
-    // Blue Sky → Backdrop: multi-strategy
     async function addSkyAsBackdrop(){
-      const found = vmRef && vmRef.runtime ? {vm:vmRef} : discoverVMOnce();
-      const vm = found && found.vm;
-      if (!vm) { __sascLog('[tools] VM not found yet'); return; }
-      const st = stage(vm);
-      if (!st) { __sascLog('[tools] No stage target'); return; }
+      const vm = binder();
+      if (!vm){ __sascLog('[tools] VM not found yet'); return; }
+      const st = stage(vm); if (!st){ __sascLog('[tools] No stage target'); return; }
       const cos = costumeObj('Blue Sky', SKY_SVG);
 
-      try{ if (typeof vm.addBackdrop === 'function') { await vm.addBackdrop(SKY_SVG, cos); __sascLog('[tools] Blue Sky backdrop via vm.addBackdrop ✅'); return; } }
+      try{ if (typeof vm.addBackdrop==='function'){ await vm.addBackdrop(SKY_SVG, cos); __sascLog('[tools] Blue Sky backdrop via vm.addBackdrop ✅'); return; } }
       catch(e){ __sascLog('[tools] vm.addBackdrop failed: ' + (e && e.message || e)); }
 
-      try{ if (typeof vm.addCostume === 'function') { await vm.addCostume(cos, st.id); __sascLog('[tools] Blue Sky backdrop via vm.addCostume ✅'); return; } }
+      try{ if (typeof vm.addCostume==='function'){ await vm.addCostume(cos, st.id); __sascLog('[tools] Blue Sky backdrop via vm.addCostume ✅'); return; } }
       catch(e){ __sascLog('[tools] vm.addCostume(stage) failed: ' + (e && e.message || e)); }
 
       try{
-        const asset = await fetchAsset(SKY_SVG);
+        const {arr} = await fetchAsset(SKY_SVG);
         const storage = vm.runtime && vm.runtime.storage; if (!storage) throw new Error('No VM storage');
         const p = parseAsset(SKY_SVG)||{ext:'svg', assetId:''};
         const type = (p.ext==='svg') ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
-        storage.createAsset(type, p.ext, new Uint8Array(asset.arrayBuffer), p.assetId);
+        storage.createAsset(type, p.ext, new Uint8Array(arr), p.assetId);
         st.sprite.costumes.push(cos);
         const idx = st.sprite.costumes.length - 1;
-        if (vm.renderer) {
-          if (p.ext==='svg' && vm.renderer.createSVGSkin) {
-            const text = await asset.blob.text(); const skinId = vm.renderer.createSVGSkin(text);
-            st.setCostume(idx); vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
-          } else if (vm.renderer.createBitmapSkin) {
-            const bmp = await createImageBitmap(asset.blob); const skinId = vm.renderer.createBitmapSkin(bmp, 1);
-            st.setCostume(idx); vm.renderer.updateDrawableProperties(st.drawableID, { skinId });
-          } else { st.setCostume(idx); }
-        } else { st.setCostume(idx); }
+        st.setCostume(idx);
         try { vm.runtime.emit('PROJECT_CHANGED'); } catch(_){}
         __sascLog('[tools] Blue Sky backdrop via manual injection ✅');
       }catch(e){ __sascLog('[tools] manual backdrop failed: ' + (e && e.message || e)); }
     }
 
-    // Wire buttons
-    document.getElementById('btn-apple').onclick = addApple;
-    document.getElementById('btn-backdrop-sky').onclick = addSkyAsBackdrop;
-    document.getElementById('btn-targets').onclick = ()=>{
-      const found = vmRef && vmRef.runtime ? {vm:vmRef} : discoverVMOnce();
-      const vm = found && found.vm;
-      if (!vm || !vm.runtime || !vm.runtime.targets){ __sascLog('[targets] VM not ready'); return; }
-      const ts = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ') + (t.getName ? t.getName() : t.sprite && t.sprite.name));
-      __sascLog('[targets] ' + vm.runtime.targets.length + ' targets\n- ' + ts.join('\n- '));
-    };
+    // Wire buttons once the console exists
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('btn-rebind').onclick = ()=> window.__SASC_BINDER && window.__SASC_BINDER.forceRebind();
+      document.getElementById('btn-targets').onclick = ()=>{
+        const vm = binder();
+        if (!vm || !vm.runtime || !vm.runtime.targets){ __sascLog('[targets] VM not ready'); return; }
+        const ts = vm.runtime.targets.map(t => (t.isStage?'[STAGE] ':'[SPRITE] ') + (t.getName ? t.getName() : t.sprite && t.sprite.name));
+        __sascLog('[targets] ' + vm.runtime.targets.length + ' targets\n- ' + ts.join('\n- '));
+      };
+      document.getElementById('btn-apple').onclick = addApple;
+      document.getElementById('btn-backdrop-sky').onclick = addSkyAsBackdrop;
+    });
   })();
   </script>
 </body>
