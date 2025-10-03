@@ -1,0 +1,26 @@
+/* Hide SheepTester logo (various fallbacks) */
+a[href*="sheeptester"] { display: none !important; }
+img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"] { display: none !important; } /* specific hash you shared */
+img[alt*="Sheep"], .sheep, .st-sheep, .gui_menu-bar .sheep, .gui_menu-bar a[href*="sheeptester"] {
+  display: none !important;
+}
+
+/* Add your logo as a small top-right badge overlay (non-interfering) */
+#sasc-brand-badge{
+  position: fixed;
+  top: 6px;
+  right: 8px;
+  width: 120px;     /* adjust if you want it larger/smaller */
+  height: 32px;
+  background: url("/static/branding/sasc-logo.png") no-repeat center / contain;
+  z-index: 2147483647;
+  pointer-events: none; /* do not block clicks under it */
+}
+
+/* You can also lightly tweak the menu bar height so the badge fits comfortably */
+.gui_menu-bar-position_*, .gui_menu-bar-position_ {
+  min-height: 44px;
+}
+
+/* General: avoid flashes if assets load late */
+body.no-sheep a[href*="sheeptester"] { display:none !important; }
