@@ -1,28 +1,13 @@
-/* Keep the old Sheep link’s WIDTH so the toolbar layout doesn’t shift */
-a[href*="sheeptester"] {
-  visibility: hidden !important;  /* occupies layout, but hidden */
-  opacity: 0 !important;
-  pointer-events: none !important;
+/* Keep any Sheep badge hidden if it ever shows up */
+a[href*="sheeptester"], img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"] {
+  display: none !important;
 }
 
-/* Hide any sheep images if they appear */
-img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"],
-img[alt*="Sheep"],
-.sheep, .st-sheep, .gui_menu-bar a[href*="sheeptester"] img {
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+/* SASC logo inside menu bar */
+.sasc-menu-logo {
+  height: 28px;          /* matches toolbar height */
+  width: auto;
+  display: inline-block;
+  margin: 0 10px 0 6px;  /* a little breathing room */
+  vertical-align: middle;
 }
-
-/* SASC brand badge as a fixed-position IMG (added by JS) */
-#sasc-brand-badge {
-  position: fixed;
-  top: 6px;
-  right: 8px;
-  width: 140px;        /* adjust as you like */
-  height: auto;
-  z-index: 2147483647;
-  pointer-events: none; /* don’t block clicks */
-}
-
-/* No other styling changes so we don't affect icon sizes */
