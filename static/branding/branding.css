@@ -1,12 +1,10 @@
 .sasc-menu-logo{
   display:inline-block;
   height:28px;
-  margin:6px 10px 6px 6px; /* top right bottom left */
+  margin:6px 10px 6px 6px;
   vertical-align:middle;
   object-fit:contain;
 }
-
-/* Keep the menu bar aligned well */
 .gui_menu-bar, [class*="menu-bar"]{
   display:flex !important;
   align-items:center !important;
