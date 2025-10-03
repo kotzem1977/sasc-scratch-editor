@@ -2,13 +2,11 @@
   // ---------- tab title ----------
   try { document.title = 'SASC LMS'; } catch (e) {}
 
-  // helpers
   const $  = (s, r) => (r||document).querySelector(s);
   const $$ = (s, r) => Array.from((r||document).querySelectorAll(s));
 
-  // ---------- put SASC logo at the FAR LEFT of the menu bar ----------
+  // ---------- logo (same as before, kept) ----------
   function injectLogo() {
-    // Try common class fragments for the menu bar container
     const bar =
       $('.gui_menu-bar') ||
       $('[class*="menu-bar"]') ||
@@ -21,19 +19,17 @@
       img.className = 'sasc-menu-logo';
       img.alt = 'SA SchoolCoding';
       img.src = 'static/branding/sasc-logo.png';
-      // insert as first child so it's left of globe/File
       bar.insertBefore(img, bar.firstChild || null);
     }
     return true;
   }
 
-  // Try repeatedly while React mounts
   let tries = 0;
   const t = setInterval(() => {
     if (injectLogo() || ++tries > 60) clearInterval(t);
   }, 150);
 
-  // ---------- Language allow-list (ONLY inside the language menu) ----------
+  // ---------- language allow-list ----------
   const ALLOWED = new Set([
     'Afrikaans',
     'English',
@@ -45,7 +41,7 @@
   ]);
   const TOKENS = ['afrikaans','english','deutsch','xhosa','zulu','sepedi','setswana'];
 
-  function isAllowedLabel(text) {
+  function isAllowed(text) {
     if (!text) return false;
     const label = text.trim();
     if (ALLOWED.has(label)) return true;
@@ -53,65 +49,51 @@
     return TOKENS.some(tok => low.includes(tok));
   }
 
-  // Detect if a given menu looks like the *language* menu
-  function isLanguageMenu(menuEl) {
-    if (!menuEl) return false;
-    // Must be an ARIA menu with lots of items and contain several known language tokens
+  // Identify the language menu heuristically: lots of items + multiple known tokens
+  function looksLikeLanguageMenu(menuEl) {
     const items = $$('[role="menuitemradio"], [role="menuitem"], li > button, .menu-item, button', menuEl);
     if (items.length < 10) return false;
     const joined = items.map(n => (n.textContent||'').toLowerCase()).join(' ');
-    const hits = TOKENS.reduce((n,tok)=> n + (joined.includes(tok)?1:0), 0);
+    let hits = 0; TOKENS.forEach(tok => { if (joined.includes(tok)) hits++; });
     return hits >= 2;
   }
 
-  function filterLanguageMenu(menuEl) {
+  function pruneMenu(menuEl) {
     const items = $$('[role="menuitemradio"], [role="menuitem"], li > button, .menu-item, button', menuEl);
     items.forEach(node => {
       const label = (node.textContent || '').trim();
-      // Group headings or separators typically have very short labels; leave them alone
+      // Keep very short / divider-like entries
       if (!label || label.length <= 2) return;
-      // Hide by default; show if allowed
-      node.style.display = isAllowedLabel(label) ? '' : 'none';
+      node.style.display = isAllowed(label) ? '' : 'none';
     });
   }
 
-  // Observe added menus; only process menus that look like the language menu
+  // Observe ALL popups; only prune those that look like language menus
   const mo = new MutationObserver(muts => {
     muts.forEach(m => {
       m.addedNodes.forEach(n => {
         if (!(n instanceof HTMLElement)) return;
-        // Check the node itself if it's a menu
         if (n.getAttribute && (n.getAttribute('role') === 'menu' || n.getAttribute('role') === 'listbox')) {
-          if (isLanguageMenu(n)) filterLanguageMenu(n);
+          if (looksLikeLanguageMenu(n)) pruneMenu(n);
         }
-        // … and any descendant menus
         $$('[role="menu"], [role="listbox"]', n).forEach(el => {
-          if (isLanguageMenu(el)) filterLanguageMenu(el);
+          if (looksLikeLanguageMenu(el)) pruneMenu(el);
         });
       });
     });
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
-  // Also try right after clicks (menus typically open on click)
-  ['click','pointerup'].forEach(ev => {
-    document.addEventListener(ev, () => {
-      setTimeout(() => {
-        $$('[role="menu"], [role="listbox"]').forEach(el => {
-          if (isLanguageMenu(el)) filterLanguageMenu(el);
-        });
-      }, 50);
-    });
-  });
+  // Also prune on every click—useful right after opening the globe menu
+  const poke = () => {
+    setTimeout(() => {
+      $$('[role="menu"], [role="listbox"]').forEach(el => {
+        if (looksLikeLanguageMenu(el)) pruneMenu(el);
+      });
+    }, 30);
+  };
+  ['click','pointerup','keydown'].forEach(ev => document.addEventListener(ev, poke, true));
 
-  // Safety sweeps shortly after load
-  window.addEventListener('load', () => {
-    [300, 800, 1500, 3000].forEach(ms => {
-      setTimeout(() => {
-        $$('[role="menu"], [role="listbox"]').forEach(el => {
-          if (isLanguageMenu(el)) filterLanguageMenu(el);
-        });
-      }, ms);
-    });
-  });
+  // Safety sweeps
+  [200, 600, 1200, 2400, 4000].forEach(ms => setTimeout(poke, ms));
 })();
