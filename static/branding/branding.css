@@ -1,26 +1,31 @@
-/* Hide SheepTester logo (various fallbacks) */
-a[href*="sheeptester"] { display: none !important; }
-img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"] { display: none !important; } /* specific hash you shared */
-img[alt*="Sheep"], .sheep, .st-sheep, .gui_menu-bar .sheep, .gui_menu-bar a[href*="sheeptester"] {
-  display: none !important;
+/* Keep the old Sheep link’s WIDTH so the toolbar doesn’t shift.
+   Use visibility/opacity instead of display:none on anchors. */
+a[href*="sheeptester"] {
+  visibility: hidden !important;  /* occupies layout, but hidden */
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"],
+img[alt*="Sheep"],
+.sheep, .st-sheep, .gui_menu-bar a[href*="sheeptester"] img {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
-/* Add your logo as a small top-right badge overlay (non-interfering) */
+/* Fixed overlay badge: use RELATIVE path so it works on GitHub Pages subpath */
 #sasc-brand-badge{
   position: fixed;
   top: 6px;
   right: 8px;
-  width: 120px;     /* adjust if you want it larger/smaller */
-  height: 32px;
-  background: url("/static/branding/sasc-logo.png") no-repeat center / contain;
+  width: 140px;   /* tweak as you like */
+  height: 36px;
+  background: url("static/branding/sasc-logo.png") no-repeat center / contain;
   z-index: 2147483647;
-  pointer-events: none; /* do not block clicks under it */
+  pointer-events: none; /* don’t block clicks */
 }
 
-/* You can also lightly tweak the menu bar height so the badge fits comfortably */
-.gui_menu-bar-position_*, .gui_menu-bar-position_ {
+/* (Optional) give menu bar a smidge more breathing room */
+.gui_menu-bar, [class*="menu-bar"], [class*="gui_menu-bar"] {
   min-height: 44px;
 }
-
-/* General: avoid flashes if assets load late */
-body.no-sheep a[href*="sheeptester"] { display:none !important; }
