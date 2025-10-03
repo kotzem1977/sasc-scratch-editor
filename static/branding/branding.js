@@ -2,17 +2,19 @@
   // 1) Tab title
   try { document.title = 'SASC LMS'; } catch (e) {}
 
-  // 2) Add the SASC badge overlay (once)
+  // 2) Add the SASC badge overlay as an IMG (reliable paths on GH Pages)
   try {
     if (!document.getElementById('sasc-brand-badge')) {
-      var badge = document.createElement('div');
-      badge.id = 'sasc-brand-badge';
-      document.body.appendChild(badge);
+      var img = document.createElement('img');
+      img.id = 'sasc-brand-badge';
+      // RELATIVE path (works on /<user>/<repo>/)
+      img.src = 'static/branding/sasc-logo.png';
+      img.alt = 'SA SchoolCoding';
+      document.body.appendChild(img);
     }
   } catch (e) {}
 
-  // 3) Language menu filter
-  // Keep these visible; hide all other language entries (NOT deleting them).
+  // 3) Language menu filter (hide-all-then-allow some)
   var ALLOWED = new Set([
     'Afrikaans',
     'English',
@@ -23,79 +25,80 @@
     'Setswana'
   ]);
 
-  // Some builds render localized labels; allow English + common self-names too:
+  // Also keep these if we detect them (self-names / lowercases)
   var ALSO_MATCH_IF_CONTAINS = [
-    'afrikaans', 'english', 'deutsch', 'xhosa', 'zulu', 'sepedi', 'setswana'
+    'afrikaans','english','deutsch','xhosa','zulu','sepedi','setswana'
   ];
 
-  function looksLikeLanguageMenu(menuEl) {
-    if (!menuEl) return false;
-    var txt = (menuEl.textContent || '').toLowerCase();
-    // Heuristic: language menus are long and contain at least one of these markers
-    var hasMarker = txt.includes('english') || txt.includes('afrikaans') || txt.includes('deutsch');
-    return hasMarker || (txt.split('\n').length > 40); // lots of items
+  // Heuristic: figure out which "menu" looks like languages
+  function isLanguageMenu(el) {
+    if (!el) return false;
+    var txt = (el.textContent || '').toLowerCase();
+    // language menus usually contain "english" or lots of items
+    return txt.includes('english') || txt.split('\n').length > 40;
   }
 
-  function shouldHideItem(text) {
-    if (!text) return false;
-    var label = text.trim();
+  function isAllowedLabel(label) {
     if (!label) return false;
-
-    if (ALLOWED.has(label)) return false; // keep exact matches
-
-    // If label contains any of our known self-names but isn’t exact, keep it
-    var low = label.toLowerCase();
+    var trimmed = label.trim();
+    if (ALLOWED.has(trimmed)) return true;
+    var low = trimmed.toLowerCase();
     for (var i=0; i<ALSO_MATCH_IF_CONTAINS.length; i++) {
-      if (low.includes(ALSO_MATCH_IF_CONTAINS[i])) return false;
-    }
-    // Otherwise, hide it — but only if it actually looks like a language-y entry
-    // (has letters and no menu control wording)
-    if (/[a-z]/i.test(label) && !/search|clear|reset|back|help|about/i.test(label)) {
-      return true;
+      if (low.includes(ALSO_MATCH_IF_CONTAINS[i])) return true;
     }
     return false;
   }
 
-  function pruneMenu(menu) {
-    var items = menu.querySelectorAll('[role="menuitemradio"], [role="menuitem"], li, button, .menu_item, .menu-item, [class*="menu-item"]');
+  function hideAllThenAllow(menu) {
+    // common item nodes: role menuitem*, li > button, button in menus, etc.
+    var items = menu.querySelectorAll(
+      '[role="menuitemradio"],[role="menuitem"],li > button,li,[class*="menu-item"],button'
+    );
     items.forEach(function (el) {
       var t = (el.textContent || '').trim();
-      if (shouldHideItem(t)) {
-        el.style.display = 'none';
+      // Hide everything by default
+      el.style.display = 'none';
+      // If allowed, show it
+      if (isAllowedLabel(t)) {
+        el.style.display = '';
       }
     });
   }
 
-  // Observe new menus and prune eagerly
+  // Sweep every time menus might (re)render
+  function sweep() {
+    // Try general menu containers
+    document.querySelectorAll('[role="menu"], .menu, .popover, .ReactModalPortal, [class*="menu"]').forEach(function (menu) {
+      try {
+        if (isLanguageMenu(menu)) hideAllThenAllow(menu);
+      } catch (e) {}
+    });
+  }
+
+  // Observe DOM for new menus
   var obs = new MutationObserver(function (muts) {
     muts.forEach(function (m) {
       m.addedNodes.forEach(function (node) {
         if (!(node instanceof HTMLElement)) return;
-        // Check this node and any nested role="menu"
-        var menus = [];
-        if (node.getAttribute && node.getAttribute('role') === 'menu') menus.push(node);
-        node.querySelectorAll && node.querySelectorAll('[role="menu"]').forEach(function (n){ menus.push(n); });
-        menus.forEach(function(menu){
-          if (looksLikeLanguageMenu(menu)) pruneMenu(menu);
+        if (node.getAttribute && (node.getAttribute('role') === 'menu')) {
+          if (isLanguageMenu(node)) hideAllThenAllow(node);
+        }
+        node.querySelectorAll && node.querySelectorAll('[role="menu"]').forEach(function (sub) {
+          if (isLanguageMenu(sub)) hideAllThenAllow(sub);
         });
       });
     });
   });
   obs.observe(document.body, { childList: true, subtree: true });
 
-  // Also prune on click & after a short delay (covers lazy-rendered menus)
-  function sweep() {
-    document.querySelectorAll('[role="menu"]').forEach(function(menu){
-      if (looksLikeLanguageMenu(menu)) pruneMenu(menu);
-    });
-  }
-  document.addEventListener('click', function(){
+  // Also sweep on clicks and shortly after load (covers lazy-rendered menus)
+  document.addEventListener('click', function () {
     setTimeout(sweep, 0);
-    setTimeout(sweep, 150);
-    setTimeout(sweep, 500);
+    setTimeout(sweep, 120);
+    setTimeout(sweep, 400);
   });
   window.addEventListener('load', function(){
-    setTimeout(sweep, 500);
+    setTimeout(sweep, 300);
     setTimeout(sweep, 1200);
   });
 })();
