@@ -1,18 +1,15 @@
-/* Keep any SheepTester badge hidden if it reappears */
-a[href*="sheeptester"],
-img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"] {
-  display: none !important;
+/* Keep top bar layout stable */
+.sasc-menu-logo{
+  display:inline-block;
+  height:28px;             /* tweak if you want it bigger/smaller */
+  margin:6px 10px 6px 6px; /* top/right/bottom/left */
+  vertical-align:middle;
+  object-fit:contain;
 }
 
-/* SASC logo inside the scratch toolbar (purple bar) */
-.sasc-menu-logo {
-  height: 24px;          /* a bit smaller so it never touches the top */
-  width: auto;
-  display: inline-block;
-  margin: 0 10px 0 6px;  /* horizontal breathing room */
-  vertical-align: middle;
-  /* Make sure it's centered in the bar regardless of line-height quirks */
-  position: relative;
-  top: 2px;              /* nudge down a touch */
-  align-self: center;    /* works if container uses flex */
+/* Make sure the toolbar doesn't collapse when menus change */
+.gui_menu-bar, [class*="menu-bar"]{
+  display:flex !important;
+  align-items:center !important;
+  gap:8px;
 }
