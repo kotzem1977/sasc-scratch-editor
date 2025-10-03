@@ -1,28 +1,18 @@
-/* Keep the old Sheep link’s WIDTH so the toolbar layout doesn’t shift */
-a[href*="sheeptester"] {
-  visibility: hidden !important;  /* occupies layout, but hidden */
-  opacity: 0 !important;
-  pointer-events: none !important;
+/* Keep any SheepTester badge hidden if it reappears */
+a[href*="sheeptester"],
+img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"] {
+  display: none !important;
 }
 
-/* Hide any sheep images if they appear */
-img[src*="6d026568fc8d1c2ccb6bfe7b5623c4ca.svg"],
-img[alt*="Sheep"],
-.sheep, .st-sheep, .gui_menu-bar a[href*="sheeptester"] img {
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+/* SASC logo inside the scratch toolbar (purple bar) */
+.sasc-menu-logo {
+  height: 24px;          /* a bit smaller so it never touches the top */
+  width: auto;
+  display: inline-block;
+  margin: 0 10px 0 6px;  /* horizontal breathing room */
+  vertical-align: middle;
+  /* Make sure it's centered in the bar regardless of line-height quirks */
+  position: relative;
+  top: 2px;              /* nudge down a touch */
+  align-self: center;    /* works if container uses flex */
 }
-
-/* SASC brand badge as a fixed-position IMG (added by JS) */
-#sasc-brand-badge {
-  position: fixed;
-  top: 6px;
-  right: 8px;
-  width: 140px;        /* adjust as you like */
-  height: auto;
-  z-index: 2147483647;
-  pointer-events: none; /* don’t block clicks */
-}
-
-/* No other styling changes so we don't affect icon sizes */
